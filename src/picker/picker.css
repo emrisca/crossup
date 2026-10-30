@@ -1,0 +1,174 @@
+/*
+ * The picker's own stylesheet, deliberately separate from the app's: this page
+ * is stretched over the desktop and transparent, so it must not pull in the
+ * floor, the panels or anything else that would paint a background.
+ */
+
+:root {
+  --pick-accent: #6fd0ff;
+  --pick-warn: #ffc46b;
+  --pick-ink: #f2f6fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#picker {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body.picker-body {
+  font-family: var(--font-sans, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
+  font-size: 12px;
+  color: var(--pick-ink);
+  cursor: crosshair;
+  user-select: none;
+}
+
+.picker {
+  position: fixed;
+  inset: 0;
+  cursor: crosshair;
+  overflow: hidden;
+}
+
+.picker--idle {
+  cursor: default;
+}
+
+/* The dim is on its own layer so the dragged area can be cut out of it. */
+.picker__dim {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 13, 0.34);
+  transition: opacity 90ms ease-out;
+}
+
+.picker__dim--off {
+  opacity: 0;
+}
+
+.picker__guide {
+  position: fixed;
+  background: rgba(111, 208, 255, 0.55);
+  pointer-events: none;
+}
+
+.picker__guide--x {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.picker__guide--y {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.picker__box {
+  position: fixed;
+  border: 1.5px solid var(--pick-accent);
+  background: rgba(111, 208, 255, 0.16);
+  /* Cuts the dim out around the rectangle, so what is being picked stays clear. */
+  box-shadow: 0 0 0 100vmax rgba(6, 9, 13, 0.34);
+  pointer-events: none;
+}
+
+.picker__box--tiny {
+  border-style: dashed;
+}
+
+.picker__size {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: -1px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(9, 13, 18, 0.85);
+  color: var(--pick-ink);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* Zones that are already placed, drawn as they are so a new one fits between. */
+.picker__zone {
+  position: fixed;
+  border: 1px dashed rgba(255, 196, 107, 0.9);
+  background: rgba(255, 196, 107, 0.1);
+  pointer-events: none;
+}
+
+.picker__badge {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 5px;
+  background: var(--pick-warn);
+  color: #241a05;
+  font-size: 9.5px;
+  font-weight: 650;
+}
+
+.picker__point {
+  position: fixed;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border: 1.5px solid var(--pick-warn);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.picker__hint {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px 7px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 11px;
+  background: rgba(9, 13, 18, 0.86);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.45);
+  cursor: default;
+}
+
+.picker__what {
+  font-weight: 600;
+}
+
+.picker__note {
+  opacity: 0.62;
+}
+
+.picker__button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  padding: 4px 9px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--pick-ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+.picker__button:hover {
+  background: rgba(255, 255, 255, 0.16);
+}

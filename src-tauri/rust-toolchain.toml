@@ -1,0 +1,4 @@
+# The default host toolchain on this machine is `windows-gnu`, whose linker is
+# missing the MinGW `dlltool.exe`. Tauri on Windows wants MSVC.
+[toolchain]
+channel = "stable-x86_64-pc-windows-msvc"

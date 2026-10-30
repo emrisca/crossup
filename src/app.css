@@ -1,0 +1,538 @@
+/* Crossup chrome: profile rail, mapping table, status bar, dialog rows.
+   Reads only the Interior material tokens, so the UI-Colors palette repaints
+   all of it. */
+
+.hb { display: flex; height: 100%; gap: 12px; padding: 12px; overflow: hidden; }
+
+.hb__aside {
+  display: flex; width: 256px; flex: none; flex-direction: column;
+  border-radius: 18px; overflow: hidden;
+}
+
+.hb__brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 8px; }
+
+.hb__mark {
+  display: grid; place-items: center; width: 24px; height: 24px; flex: none;
+  border-radius: 7px; box-shadow: var(--shadow-cap); color: var(--panel);
+  background: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 40%, var(--ink)));
+}
+
+.hb__brand-name { font-size: 13px; font-weight: 650; letter-spacing: -0.015em; color: var(--ink); }
+
+.hb__brand-note {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 9.5px; letter-spacing: 0.04em; color: var(--ink-3);
+}
+
+.hb__rail-label {
+  padding: 8px 18px 5px; font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
+}
+
+.hb__nav { flex: 1; overflow-y: auto; padding: 0 8px; overscroll-behavior: contain; }
+
+.hb__profile {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 9px; border: 0; border-radius: 9px; background: none;
+  color: var(--ink-2); font: inherit; text-align: left; cursor: pointer;
+}
+
+.hb__profile:hover { background: var(--sub); color: var(--ink); }
+
+.hb__profile[aria-current="true"] {
+  background: var(--well); box-shadow: var(--shadow-row); color: var(--ink);
+}
+
+.hb__profile-name {
+  min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; font-size: 12.5px; font-weight: 500;
+}
+
+.hb__profile-meta {
+  font-family: var(--font-mono), ui-monospace, monospace; font-size: 9.5px; color: var(--ink-3);
+}
+
+.hb__gear-dot {
+  width: 5px; height: 5px; flex: none; border-radius: 999px; background: var(--moss);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--moss) 22%, transparent);
+}
+
+.hb__gear-dot--off { background: var(--ink-3); box-shadow: none; }
+
+.hb__rail-foot { padding: 8px; }
+
+.hb__add {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; padding: 8px; border: 1px dashed var(--hairline-strong);
+  border-radius: 9px; background: none; color: var(--ink-2);
+  font: inherit; font-size: 12px; cursor: pointer;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.hb__add:hover { background: var(--sub); color: var(--ink); }
+
+.hb__main {
+  display: flex; min-width: 0; flex: 1; flex-direction: column;
+  border-radius: 20px; overflow: hidden;
+}
+
+.hb__bar {
+  display: flex; height: 50px; flex: none; align-items: center; gap: 10px;
+  padding: 0 14px; border-bottom: 1px solid var(--hairline);
+  background: color-mix(in oklab, var(--panel) 86%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.hb__pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px;
+  border-radius: 999px; background: var(--well); box-shadow: var(--shadow-row);
+  font-size: 11px; font-weight: 550; color: var(--ink-2);
+}
+
+.hb__pill--on { color: var(--ink); }
+.hb__pill--off { color: var(--flag); }
+.hb__spacer { flex: 1; }
+
+.hb__icon {
+  display: grid; place-items: center; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: none; color: var(--ink-2); cursor: pointer;
+}
+
+.hb__icon:hover { background: var(--sub); color: var(--ink); }
+
+.hb__body {
+  flex: 1; overflow-y: auto; padding: 22px clamp(18px, 3vw, 32px) 26px;
+  overscroll-behavior: contain;
+}
+
+.hb__title { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.025em; color: var(--ink); }
+
+.hb__sub {
+  margin: 3px 0 0; font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px; letter-spacing: 0.03em; color: var(--ink-3);
+}
+
+.hb__actions { display: flex; align-items: center; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+
+/* `flex: none` is load-bearing: a flex child that clips its own overflow gets an
+   automatic minimum size of zero, so without it a long table is squashed to the
+   page's height and its rows are cut off rather than making the page scroll. */
+.hb__table { margin-top: 18px; border-radius: 13px; overflow: hidden; flex: none; }
+
+.hb__thead, .hb__trow {
+  display: grid; grid-template-columns: 108px 22px 108px minmax(0, 1fr) 30px;
+  align-items: center; gap: 10px; padding: 9px 12px;
+}
+
+.hb__thead {
+  border-bottom: 1px solid var(--hairline); font-size: 9.5px; font-weight: 600;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+}
+
+.hb__trow { border-top: 1px solid var(--hairline); transition: background-color 0.12s ease; }
+.hb__trow:first-of-type { border-top: 0; }
+.hb__trow:hover { background: var(--sub); }
+
+.kbd {
+  display: inline-flex; min-width: 0; max-width: 100%; align-items: center;
+  justify-content: center; padding: 4px 8px; border-radius: 7px;
+  background: var(--panel); box-shadow: var(--shadow-cap);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px; font-weight: 550; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.kbd--listening { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+
+.hb__arrow { display: grid; place-items: center; color: var(--ink-3); font-size: 12px; }
+
+.hb__mode {
+  display: inline-flex; align-items: center; gap: 5px; justify-self: start;
+  padding: 3px 8px; border-radius: 999px; background: var(--well);
+  box-shadow: var(--shadow-row); font-size: 10.5px; color: var(--ink-2);
+}
+
+.hb__mode-dot { width: 5px; height: 5px; border-radius: 999px; background: var(--accent); }
+.hb__mode-dot--warn { background: var(--flag); }
+.hb__mode-dot--moss { background: var(--moss); }
+
+.hb__delete {
+  display: grid; place-items: center; width: 26px; height: 26px;
+  border: 0; border-radius: 7px; background: none; color: var(--ink-3); cursor: pointer;
+}
+
+.hb__delete:hover { background: color-mix(in oklab, var(--flag) 14%, transparent); color: var(--flag); }
+
+.hb__empty { margin-top: 18px; padding: 26px 22px; border-radius: 14px; text-align: center; }
+.hb__empty-title { margin: 0 0 4px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+
+.hb__empty-note {
+  margin: 0 auto; max-width: 44ch; font-size: 12px; line-height: 1.6; color: var(--ink-3);
+}
+
+.hb__legend {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px;
+  padding-top: 16px; border-top: 1px solid var(--hairline);
+}
+
+.hb__legend-item {
+  flex: 1 1 190px; min-width: 0; padding: 9px 11px; border-radius: 10px;
+  background: var(--well); box-shadow: var(--shadow-row);
+}
+
+.hb__legend-name { font-size: 10.5px; font-weight: 650; letter-spacing: 0.02em; color: var(--ink); }
+
+.hb__legend-note { margin-top: 2px; font-size: 10.5px; line-height: 1.45; color: var(--ink-3); }
+
+.hb__foot {
+  display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-top: 1px solid var(--hairline); font-size: 10.5px; color: var(--ink-3);
+}
+
+/* dialogs */
+
+.hb__row {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 11px 12px; border: 0; border-radius: 10px;
+  background: var(--well); box-shadow: var(--shadow-row);
+  color: var(--ink-2); font: inherit; text-align: left;
+}
+
+button.hb__row { cursor: pointer; }
+.hb__row-name { font-size: 13px; font-weight: 550; color: var(--ink); }
+.hb__row-note { margin-top: 2px; font-size: 11.5px; color: var(--ink-3); }
+
+/* The switch rows above the remapper's table: stacked, with air between them. */
+.hb__switch-rows { display: flex; flex-direction: column; gap: 7px; margin-bottom: 2px; }
+
+.hb__row-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+
+.hb__switch {
+  position: relative; width: 34px; height: 19px; flex: none;
+  border: 0; border-radius: 999px; background: var(--well);
+  box-shadow: var(--shadow-well); cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.hb__switch[aria-checked="true"] { background: var(--accent); }
+
+.hb__switch::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 13px; height: 13px;
+  border-radius: 999px; background: var(--panel);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.hb__switch[aria-checked="true"]::after { transform: translateX(15px); }
+
+.hb__process {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 9px; border: 0; border-radius: 8px; background: none;
+  color: var(--ink-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+
+.hb__process:hover { background: var(--sub); color: var(--ink); }
+.hb__process[disabled] { opacity: 0.45; cursor: default; }
+
+.hb__field {
+  width: 100%; padding: 8px 10px; border: 0; border-radius: 9px;
+  background: var(--well); box-shadow: var(--shadow-well);
+  color: var(--ink); font: inherit; font-size: 12.5px;
+}
+
+.hb__code {
+  width: 100%; min-height: 148px; padding: 10px; border: 0; border-radius: 10px;
+  background: var(--well); box-shadow: var(--shadow-well); color: var(--ink-2);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px; line-height: 1.55; resize: vertical;
+}
+
+/* ── the three-tool shell ─────────────────────────────────────────
+   The tab strip is the Interior component; everything under it is the
+   app's own vocabulary, which is why it all reads from the same tokens. */
+
+.hb--shell { display: flex; flex-direction: column; height: 100%; gap: 10px; padding: 12px; overflow: hidden; }
+
+.hb__top {
+  display: flex; height: 52px; flex: none; align-items: center; gap: 10px;
+  padding: 0 12px; border-radius: 16px;
+}
+
+.hb__tabs { display: flex; flex: 1; min-height: 0; flex-direction: column; }
+
+.hb__tabpanel {
+  display: flex; width: 100%; flex: 1; min-height: 0; flex-direction: column;
+  overflow: hidden; padding: 0;
+}
+
+.hb__split { display: flex; width: 100%; flex: 1; min-height: 0; gap: 12px; padding: 12px; }
+
+.hb__page {
+  display: flex; min-width: 0; flex: 1; flex-direction: column;
+  overflow-y: auto; padding: 2px 4px 14px 2px; overscroll-behavior: contain;
+}
+
+.hb__head { display: flex; align-items: flex-start; gap: 12px; }
+
+.hb__side {
+  display: flex; width: 322px; flex: none; flex-direction: column; gap: 10px;
+  overflow-y: auto; padding-right: 2px; overscroll-behavior: contain;
+}
+
+.hb__rail {
+  display: flex; width: 252px; flex: none; flex-direction: column;
+  border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
+  overflow: hidden;
+}
+
+.hb__rail-head { display: flex; align-items: center; gap: 8px; padding: 11px 11px 5px; }
+.hb__rail-foot { margin-top: auto; padding: 10px; }
+
+.hb__card {
+  border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
+  padding: 14px 15px;
+}
+
+.hb__card--tight { display: flex; flex-direction: column; padding: 12px 13px; }
+.hb__card-title { margin: 0 0 4px; font-size: 12.5px; font-weight: 650; color: var(--ink); }
+
+.hb__card-note { margin: 0 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
+.hb__card--tight .hb__card-note:last-child { margin-bottom: 0; }
+.hb__tail-note { margin: 14px 2px 0; }
+
+.hb__rows { display: flex; flex-direction: column; }
+
+.hb__line {
+  display: flex; align-items: center; gap: 12px;
+  padding: 9px 0; border-top: 1px solid var(--hairline);
+}
+
+.hb__line:first-of-type { border-top: 0; }
+.hb__line-text { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.hb__line-control { display: flex; flex: none; align-items: center; gap: 6px; }
+
+.hb__inline-field { display: flex; align-items: center; gap: 7px; }
+
+.hb__field--short { width: 116px; }
+
+/* The shortcut recorder: a field you press rather than type. */
+.hb__hotkey {
+  width: auto; min-width: 154px; text-align: left; cursor: pointer;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.hb__hotkey--empty { color: var(--ink-3); }
+
+.hb__hotkey--live {
+  color: var(--accent);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--accent) 60%, transparent), var(--shadow-well);
+}
+.hb__field--unit { width: 96px; }
+.hb__field--tiny { width: 58px; }
+.hb__num { width: 84px; }
+.hb__field--title { margin: 0; padding: 5px 8px; font-size: 16px; font-weight: 600; letter-spacing: -0.02em; }
+
+.hb__field-label { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
+
+/* A path, which is long and mostly not worth reading twice. */
+.hb__path {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%;
+  font-family: var(--font-mono), ui-monospace, monospace; font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+.hb__readout {
+  min-width: 68px; text-align: right;
+  font-family: var(--font-mono), ui-monospace, monospace; font-size: 10.5px; color: var(--ink-3);
+}
+
+.hb__range { width: 148px; accent-color: var(--accent); }
+
+.hb__warn { margin: 8px 2px 0; font-size: 11.5px; line-height: 1.5; color: var(--flag); }
+.hb__error { padding: 0 18px; color: var(--flag); }
+.hb__dim { opacity: 0.8; }
+
+.hb__stat { display: flex; align-items: baseline; gap: 8px; }
+.hb__stat-value {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 15px; font-weight: 600; color: var(--ink);
+}
+.hb__stat-label { font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+
+.hb__points { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
+.hb__point { display: flex; align-items: center; gap: 5px; }
+.hb__point-at {
+  min-width: 78px; font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10.5px; color: var(--ink-2);
+}
+
+.hb__row-actions { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
+
+.hb__mini {
+  padding: 6px 11px; border: 0; border-radius: 8px; background: var(--panel);
+  box-shadow: var(--shadow-cap); color: var(--ink-2);
+  font: inherit; font-size: 11.5px; cursor: pointer;
+}
+
+.hb__mini:hover { color: var(--ink); }
+.hb__mini:disabled { opacity: 0.5; cursor: default; }
+
+/* The one button that destroys something, so it does not look like the others. */
+.hb__mini--danger { color: var(--flag); }
+.hb__mini--danger:hover { color: var(--flag); filter: brightness(1.15); }
+.hb__mini--wide { width: 100%; }
+
+.hb__chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0; }
+
+.hb__tag {
+  display: inline-flex; align-items: center; gap: 5px; padding: 3px 4px 3px 9px;
+  border-radius: 999px; background: var(--well); box-shadow: var(--shadow-row);
+  font-size: 11px; color: var(--ink-2);
+}
+
+.hb__tag button { padding: 0 2px; border: 0; background: none; color: var(--ink-3); font-size: 12px; cursor: pointer; }
+
+.hb__chip {
+  padding: 4px 10px; border: 0; border-radius: 999px; background: var(--well);
+  box-shadow: var(--shadow-well); color: var(--ink-3);
+  font: inherit; font-size: 11px; text-transform: capitalize; cursor: pointer;
+}
+
+.hb__chip[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); box-shadow: var(--shadow-row); }
+
+/* the four boundaries of a failsafe: each keeps its own switch and distance */
+
+.hb__guards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin: 7px 0 8px; }
+
+.hb__guard { display: flex; min-width: 0; align-items: center; gap: 5px; }
+.hb__guard .hb__chip { flex: none; padding: 3px 7px; font-size: 10.5px; }
+.hb__guard .hb__num { width: 100%; min-width: 0; padding: 4px 6px; font-size: 11.5px; }
+.hb__guard .hb__num:disabled { opacity: 0.45; }
+
+/* zones: a rectangle, where it is, and what it does */
+
+.hb__zones { display: flex; flex-direction: column; gap: 7px; margin: 7px 0; }
+
+.hb__zone {
+  padding: 8px 9px; border-radius: 10px;
+  background: var(--well); box-shadow: var(--shadow-row);
+}
+
+.hb__zone-head { display: flex; align-items: center; gap: 7px; }
+.hb__zone-head .hb__field--short { flex: none; padding: 4px 6px; font-size: 11.5px; }
+
+.hb__zone-index {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px; color: var(--ink-3);
+}
+
+.hb__zone-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 7px; }
+.hb__zone-fields label { display: flex; min-width: 0; align-items: center; gap: 4px; }
+.hb__zone-fields .hb__num { width: 100%; min-width: 0; padding: 4px 5px; font-size: 11px; }
+
+.hb__zone-capture { display: flex; gap: 5px; margin-top: 7px; }
+.hb__zone-capture .hb__mini { flex: 1; min-width: 0; padding: 5px 6px; font-size: 10.5px; }
+
+.hb__check { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--ink-3); }
+.hb__check input { accent-color: var(--accent); }
+
+.hb__pulse {
+  width: 6px; height: 6px; border-radius: 999px; background: var(--moss);
+  animation: hb-pulse 1.3s ease-in-out infinite;
+}
+
+@keyframes hb-pulse { 50% { opacity: 0.3; } }
+
+.hb__press--flag { color: var(--flag); }
+.hb__press--flag * { color: var(--flag); }
+
+/* ── the block builder ──────────────────────────────────────────── */
+
+.hb__builder {
+  margin-top: 14px; padding: 13px 14px 15px;
+  border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
+}
+
+/* The palette holds its place at the top of the builder while the macro
+   scrolls under it: a long list used to carry the block buttons off screen, so
+   adding one more meant scrolling back up first. It sits over the builder's own
+   padding so nothing shows through above it. */
+.pal {
+  position: sticky; top: 0; z-index: 2;
+  margin: -13px -14px 0; padding: 13px 14px 8px;
+  background: var(--sub); border-radius: 14px 14px 0 0;
+}
+
+.pal__row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.pal__item {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  border: 1px dashed var(--hairline-strong); border-radius: 9px; background: none;
+  color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: grab;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.pal__item:hover { background: var(--panel); color: var(--ink); }
+.pal__grip { color: var(--ink-3); font-size: 10px; }
+
+.blk__list { display: flex; flex-direction: column; gap: 6px; }
+.blk__wrap { display: flex; flex-direction: column; }
+
+.blk { position: relative; border-radius: 11px; background: var(--panel); box-shadow: var(--shadow-cap); }
+.blk--dragging { opacity: 0.4; }
+.blk__wrap--marked > .blk { box-shadow: 0 0 0 2px var(--accent), var(--shadow-cap); }
+.blk__body { padding: 8px 10px 9px; }
+
+.blk__title-row { display: flex; align-items: center; gap: 7px; }
+.blk__grip { cursor: grab; color: var(--ink-3); font-size: 11px; }
+.blk__title { font-size: 12px; font-weight: 600; color: var(--ink); }
+.blk__summary { margin: 2px 0 0; font-size: 11px; color: var(--ink-3); }
+.blk__buttons { display: flex; gap: 2px; }
+
+/* A coordinate is a number with an axis in front of it, not an anonymous box. */
+.blk__coord { display: inline-flex; align-items: center; gap: 4px; }
+
+.blk__axis {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.06em;
+  color: var(--ink-3); min-width: 9px;
+}
+
+.blk__coord .hb__num { width: 62px; }
+
+/* A sentence under the controls, full width so it does not sit beside them. */
+.blk__hint {
+  flex-basis: 100%; font-size: 10.5px; line-height: 1.5; color: var(--ink-3);
+}
+
+.blk__fields { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; }
+
+.blk__children {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 6px 0 0 16px; padding-left: 11px;
+  border-left: 2px solid var(--hairline);
+}
+
+.blk__children--active { border-left-color: var(--accent); }
+
+/* The place a block can land. Only visible while something is being dragged,
+   so the tree stays quiet the rest of the time. */
+.blk__tail {
+  display: none; margin-top: 6px; padding: 8px 10px;
+  border: 1px dashed var(--hairline-strong); border-radius: 9px; text-align: center;
+  font-size: 10px; font-weight: 550; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.hb__builder[data-dragging] .blk__tail { display: block; }
+.blk__tail--active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.blk__tail--empty { padding: 14px 10px; }
+
+.blk__drop { position: absolute; inset: 0; border-radius: 11px; }
+
+/* The remapper's rail used to lean on `mat-panel`; inside the tab strip it is
+   one card among several, so it takes the same surface as the others. */
+.hb__aside {
+  display: flex; width: 256px; flex: none; flex-direction: column;
+  border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
+  overflow: hidden;
+}
