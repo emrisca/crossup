@@ -2,14 +2,14 @@
    Reads only the Interior material tokens, so the UI-Colors palette repaints
    all of it. */
 
-.hb { display: flex; height: 100%; gap: 12px; padding: 12px; overflow: hidden; }
+.hb { display: flex; height: 100%; gap: 10px; padding: 10px; overflow: hidden; }
 
 .hb__aside {
   display: flex; width: 256px; flex: none; flex-direction: column;
   border-radius: 18px; overflow: hidden;
 }
 
-.hb__brand { display: flex; align-items: center; gap: 10px; padding: 14px 14px 8px; }
+.hb__brand { display: flex; align-items: center; gap: 10px; padding: 10px 10px 6px; }
 
 .hb__mark {
   display: grid; place-items: center; width: 24px; height: 24px; flex: none;
@@ -121,7 +121,7 @@
 
 .hb__thead, .hb__trow {
   display: grid; grid-template-columns: 108px 22px 108px minmax(0, 1fr) 30px;
-  align-items: center; gap: 10px; padding: 9px 12px;
+  align-items: center; gap: 10px; padding: 8px 10px;
 }
 
 .hb__thead {
@@ -176,7 +176,7 @@
 }
 
 .hb__legend-item {
-  flex: 1 1 190px; min-width: 0; padding: 9px 11px; border-radius: 10px;
+  flex: 1 1 190px; min-width: 0; padding: 8px 10px; border-radius: 10px;
   background: var(--well); box-shadow: var(--shadow-row);
 }
 
@@ -192,7 +192,7 @@
 /* dialogs */
 
 .hb__row {
-  display: flex; align-items: center; gap: 12px; width: 100%;
+  display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 10px 10px; border: 0; border-radius: 10px;
   background: var(--well); box-shadow: var(--shadow-row);
   color: var(--ink-2); font: inherit; text-align: left;
@@ -251,7 +251,7 @@ button.hb__row { cursor: pointer; }
    The tab strip is the Interior component; everything under it is the
    app's own vocabulary, which is why it all reads from the same tokens. */
 
-.hb--shell { display: flex; flex-direction: column; height: 100%; gap: 10px; padding: 12px; overflow: hidden; }
+.hb--shell { display: flex; flex-direction: column; height: 100%; gap: 10px; padding: 10px; overflow: hidden; }
 
 .hb__top {
   display: flex; height: 52px; flex: none; align-items: center; gap: 10px;
@@ -265,14 +265,14 @@ button.hb__row { cursor: pointer; }
   overflow: hidden; padding: 0;
 }
 
-.hb__split { display: flex; width: 100%; flex: 1; min-height: 0; gap: 12px; padding: 12px; }
+.hb__split { display: flex; width: 100%; flex: 1; min-height: 0; gap: 10px; padding: 10px; }
 
 .hb__page {
   display: flex; min-width: 0; flex: 1; flex-direction: column;
-  overflow-y: auto; padding: 2px 4px 14px 2px; overscroll-behavior: contain;
+  overflow-y: auto; padding: 0 4px 10px 2px; overscroll-behavior: contain;
 }
 
-.hb__head { display: flex; align-items: flex-start; gap: 12px; }
+.hb__head { display: flex; align-items: flex-start; gap: 10px; }
 
 .hb__side {
   display: flex; width: 322px; flex: none; flex-direction: column; gap: 10px;
@@ -285,7 +285,7 @@ button.hb__row { cursor: pointer; }
   overflow: hidden;
 }
 
-.hb__rail-head { display: flex; align-items: center; gap: 8px; padding: 11px 11px 5px; }
+.hb__rail-head { display: flex; align-items: center; gap: 8px; padding: 10px 10px 6px; }
 .hb__rail-foot { margin-top: auto; padding: 10px; }
 
 .hb__card {
@@ -293,17 +293,17 @@ button.hb__row { cursor: pointer; }
   padding: 10px 10px;
 }
 
-.hb__card--tight { display: flex; flex-direction: column; padding: 12px 13px; }
+.hb__card--tight { display: flex; flex-direction: column; padding: 10px; }
 .hb__card-title { margin: 0 0 4px; font-size: 12.5px; font-weight: 650; color: var(--ink); }
 
 .hb__card-note { margin: 0 0 10px; font-size: 11.5px; line-height: 1.5; color: var(--ink-3); }
 .hb__card--tight .hb__card-note:last-child { margin-bottom: 0; }
-.hb__tail-note { margin: 14px 2px 0; }
+.hb__tail-note { margin: 10px 2px 0; }
 
 .hb__rows { display: flex; flex-direction: column; }
 
 .hb__line {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 10px;
   padding: 8px 0; border-top: 1px solid var(--hairline);
 }
 
@@ -449,7 +449,7 @@ button.hb__row { cursor: pointer; }
 /* ── the block builder ──────────────────────────────────────────── */
 
 .hb__builder {
-  margin-top: 10px; padding: 13px 14px 15px;
+  margin-top: 10px; padding: 10px;
   border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
 }
 
@@ -466,7 +466,7 @@ button.hb__row { cursor: pointer; }
 .pal__row { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .pal__item {
-  display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
   border: 1px dashed var(--hairline-strong); border-radius: 9px; background: none;
   color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: grab;
   transition: background-color 0.14s ease, color 0.14s ease;
@@ -508,7 +508,7 @@ button.hb__row { cursor: pointer; }
 
 .blk__children {
   display: flex; flex-direction: column; gap: 6px;
-  margin: 6px 0 0 10px; padding-left: 11px;
+  margin: 6px 0 0 10px; padding-left: 10px;
   border-left: 2px solid var(--hairline);
 }
 
@@ -525,7 +525,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__builder[data-dragging] .blk__tail { display: block; }
 .blk__tail--active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
-.blk__tail--empty { padding: 14px 10px; }
+.blk__tail--empty { padding: 10px; }
 
 .blk__drop { position: absolute; inset: 0; border-radius: 11px; }
 
@@ -622,7 +622,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__update-go,
 .hb__update-later {
-  flex: none; padding: 5px 11px; border: 0; border-radius: 999px;
+  flex: none; padding: 6px 10px; border: 0; border-radius: 999px;
   font: inherit; font-size: 11.5px; cursor: pointer;
 }
 
@@ -694,8 +694,55 @@ button.hb__row { cursor: pointer; }
 .hb__builder--lead { background: var(--panel); box-shadow: var(--shadow-lift); }
 .hb__builder--lead .pal { background: var(--panel); }
 
-/* A destructive step asks once, in place. */
-.hb__confirm { display: flex; gap: 6px; padding-right: 6px; }
+/* A destructive step is undone rather than confirmed. The title row pins to
+   the top of the page column, and its background fades out instead of ending
+   in a rule: controls passing underneath dissolve, and at rest the header
+   looks like plain page. */
+.hb__head {
+  position: sticky; top: 0; z-index: 5;
+  padding: 8px 0 10px;
+  background: var(--panel);
+}
+
+/* The fade lives under the header, not in it: a gradient behind the title let
+   the row sliding past show through the subtitle. */
+.hb__head::after {
+  content: ""; position: absolute; left: 0; right: 0; top: 100%;
+  height: 12px; pointer-events: none;
+  background: linear-gradient(to bottom, var(--panel), transparent);
+}
+
+/* The undo bar floats over the page: a delete never moves the layout while the
+   offer to take it back is still on screen. */
+.hb__undo {
+  position: fixed; left: 50%; bottom: 46px; z-index: 60;
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 10px; border-radius: 12px;
+  background: var(--well); color: var(--ink);
+  box-shadow: var(--shadow-lift), inset 0 0 0 1px var(--hairline);
+  transform: translateX(-50%);
+  animation: hb-undo-in 0.16s ease-out;
+}
+
+.hb__undo-text { font-size: 12px; }
+
+.hb__undo-go {
+  display: inline-flex; height: 26px; align-items: center; gap: 6px;
+  padding: 0 10px; border: 0; border-radius: 7px;
+  background: var(--sub); color: var(--ink);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+
+.hb__undo-go:hover { background: color-mix(in oklab, var(--accent) 16%, var(--sub)); }
+
+@keyframes hb-undo-in {
+  from { opacity: 0; transform: translate(-50%, 6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hb__undo { animation: none; }
+}
 
 /* The boot frame: the window it is about to become, in flat blocks. No shimmer,
    because a skeleton that animates is a second thing to wait for. */

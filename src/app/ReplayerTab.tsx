@@ -16,6 +16,7 @@ import { Card, Line } from "./AutoClickerTab";
 import { Switch } from "./Dialogs";
 import { HotkeyField } from "./HotkeyField";
 import { NumberField } from "./NumberField";
+import { pushUndo } from "./undo";
 
 const STATUS: Record<ReplayStateView["status"], string> = {
   idle: "Idle",
@@ -48,8 +49,6 @@ export function ReplayerTab({
 }) {
   const [state, setState] = useState<ReplayStateView | null>(null);
   const [name, setName] = useState("");
-  /** The recording a delete is waiting on a second press for. */
-  const [confirming, setConfirming] = useState<string | null>(null);
   const options = view.replay;
   const chosen =
     options.recordings.find((entry) => entry.id === options.selected) ?? null;
@@ -292,37 +291,18 @@ export function ReplayerTab({
                     {entry.events} actions · {seconds(entry.durationMs)}
                   </span>
                 </button>
-                {confirming === entry.id ? (
-                  <span className="hb__confirm">
-                    <button
-                      type="button"
-                      className="hb__mini hb__mini--danger"
-                      onClick={() => {
-                        setConfirming(null);
-                        void run("delete_recording", { id: entry.id });
-                      }}
-                    >
-                      Delete
-                    </button>
-                    <button
-                      type="button"
-                      className="hb__mini"
-                      onClick={() => setConfirming(null)}
-                    >
-                      Keep
-                    </button>
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    className="hb__delete"
-                    aria-label={`Delete ${entry.name}`}
-                    disabled={busy}
-                    onClick={() => setConfirming(entry.id)}
-                  >
-                    ×
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="hb__delete"
+                  aria-label={`Delete ${entry.name}`}
+                  disabled={busy}
+                  onClick={() => {
+                    void run("delete_recording", { id: entry.id });
+                    pushUndo(`Deleted the recording "${entry.name}"`);
+                  }}
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>

@@ -39,6 +39,30 @@ use macros::Macro;
 use typer::TyperSettings;
 use runtime::{ActivityView, Runtime, RuntimeState};
 
+/// The last delete, held in memory so the window can take it back.
+///
+/// One slot, because the window offers exactly one undo and says so. A stack
+/// would need a way to show the entries, and a delete that is older than the
+/// toast is already out of reach.
+enum Undo {
+    Recording {
+        index: usize,
+        recording: replay::Recording,
+        selected: String,
+    },
+    Macro {
+        index: usize,
+        definition: Macro,
+    },
+    Mapping {
+        profile: String,
+        index: usize,
+        mapping: Mapping,
+    },
+}
+
+static UNDO: Mutex<Option<Undo>> = Mutex::new(None);
+
 // ── what the UI reads ──────────────────────────────────────────────
 
 #[derive(Serialize)]
@@ -356,8 +380,11 @@ fn delete_macro(
 ) -> View {
     let settings = {
         let mut shared = state.lock().unwrap();
-        shared.settings.macros.retain(|entry| entry.id != id);
-        save(&app, &shared);
+        if let Some(index) = shared.settings.macros.iter().position(|entry| entry.id == id) {
+            let definition = shared.settings.macros.remove(index);
+            *UNDO.lock().unwrap() = Some(Undo::Macro { index, definition });
+            save(&app, &shared);
+        }
         shared.settings.clone()
     };
     runtime::register_shortcuts(&runtime, &app, &settings);
@@ -475,7 +502,20 @@ fn save_recording(
 fn delete_recording(app: AppHandle, state: State<'_, SharedState>, id: String) -> View {
     {
         let mut shared = state.lock().unwrap();
-        shared.settings.replay.recordings.retain(|entry| entry.id != id);
+        if let Some(index) = shared
+            .settings
+            .replay
+            .recordings
+            .iter()
+            .position(|entry| entry.id == id)
+        {
+            let recording = shared.settings.replay.recordings.remove(index);
+            *UNDO.lock().unwrap() = Some(Undo::Recording {
+                index,
+                recording,
+                selected: shared.settings.replay.selected.clone(),
+            });
+        }
         // The selection has to keep pointing at something: a Play button aimed
         // at a deleted recording would fail with no way to tell why.
         if shared.settings.replay.selected == id {
@@ -828,13 +868,74 @@ fn remove_mapping(
         let mut shared = state.lock().unwrap();
         if let Some(target) = shared.settings.profile_mut(&profile).map(|p| &mut p.mappings) {
             if index < target.len() {
-                target.remove(index);
+                let mapping = target.remove(index);
+                *UNDO.lock().unwrap() = Some(Undo::Mapping {
+                    profile: profile.clone(),
+                    index,
+                    mapping,
+                });
                 save(&app, &shared);
             }
         }
     }
     retarget(&state);
     snapshot(state)
+}
+
+/// Put back whatever the last delete removed, and say nothing if there is
+/// nothing left: the window only shows the offer while it exists.
+#[tauri::command]
+fn undo_delete(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    runtime: State<'_, RuntimeState>,
+) -> Result<View, String> {
+    let undone = UNDO
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or_else(|| "there is nothing left to take back".to_string())?;
+    match undone {
+        Undo::Recording {
+            index,
+            recording,
+            selected,
+        } => {
+            let mut shared = state.lock().unwrap();
+            let at = index.min(shared.settings.replay.recordings.len());
+            let id = recording.id.clone();
+            shared.settings.replay.recordings.insert(at, recording);
+            shared.settings.replay.selected = if selected.is_empty() { id } else { selected };
+            save(&app, &shared);
+        }
+        Undo::Macro { index, definition } => {
+            let settings = {
+                let mut shared = state.lock().unwrap();
+                let at = index.min(shared.settings.macros.len());
+                shared.settings.macros.insert(at, definition);
+                save(&app, &shared);
+                shared.settings.clone()
+            };
+            // Its shortcut becomes live again with the rest.
+            runtime::register_shortcuts(&runtime, &app, &settings);
+        }
+        Undo::Mapping {
+            profile,
+            index,
+            mapping,
+        } => {
+            {
+                let mut shared = state.lock().unwrap();
+                if let Some(target) = shared.settings.profile_mut(&profile).map(|p| &mut p.mappings) {
+                    let at = index.min(target.len());
+                    target.insert(at, mapping);
+                    save(&app, &shared);
+                }
+            }
+            retarget(&state);
+        }
+    }
+    Ok(snapshot(state))
 }
 
 #[tauri::command]
@@ -1105,6 +1206,7 @@ pub fn run() {
             replay::discard_recording,
             save_recording,
             delete_recording,
+            undo_delete,
             select_recording,
             save_replay_options,
             set_autostart,

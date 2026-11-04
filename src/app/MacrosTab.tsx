@@ -27,6 +27,7 @@ import { Switch } from "./Dialogs";
 import { HotkeyField } from "./HotkeyField";
 import { KeyBinder } from "./Mappings";
 import { NumberField } from "./NumberField";
+import { pushUndo } from "./undo";
 
 /** Deepest a Repeat may be nested, matching the engine's own limit. */
 const MAX_DEPTH = 6;
@@ -156,7 +157,6 @@ export function MacrosTab({
   const [draft, setDraft] = useState<Macro | null>(null);
   const [processes, setProcesses] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
   // Which block is waiting for a spot on the desktop, as a path into the tree,
   // so the answer lands on the block that asked rather than on the first one.
   const [picking, setPicking] = useState<number[] | null>(null);
@@ -433,43 +433,16 @@ export function MacrosTab({
               <button
                 type="button"
                 className="hb__mini hb__mini--danger"
-                onClick={() => setDeleteOpen(true)}
+                onClick={() => {
+                  const next = view.macros.find((entry) => entry.id !== draft.id);
+                  void run("delete_macro", { id: draft.id });
+                  pushUndo(`Deleted the macro "${draft.name}"`, () => setSelectedId(draft.id));
+                  setSelectedId(next?.id ?? null);
+                }}
               >
                 Delete macro
               </button>
             </div>
-
-            <Modal
-              open={deleteOpen}
-              onClose={() => setDeleteOpen(false)}
-              title={`Delete "${draft.name}"?`}
-              description="This removes the macro and its blocks, and frees its shortcut for another macro."
-              maxWidth={400}
-              footer={
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <button
-                    type="button"
-                    className="appearance__reset"
-                    onClick={() => setDeleteOpen(false)}
-                  >
-                    Keep it
-                  </button>
-                  <span className="hb__spacer" />
-                  <button
-                    type="button"
-                    className="hb__mini hb__mini--danger"
-                    onClick={() => {
-                      const next = view.macros.find((entry) => entry.id !== draft.id);
-                      setDeleteOpen(false);
-                      void run("delete_macro", { id: draft.id });
-                      setSelectedId(next?.id ?? null);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              }
-            />
           </>
         ) : (
           <div className="hb__empty mat-well">

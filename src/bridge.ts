@@ -729,6 +729,10 @@ const SAMPLE_TYPER_TEXT =
   "one thing nobody tested, and the release notes still claimed it worked. Next " +
   "time the checklist runs before the tag, not after it.";
 
+/** Preview-only: a copy of the state from before the last delete, so the undo
+ *  bar has something to put back without a Rust engine behind it. */
+let mockUndo: unknown = null;
+
 let mock: View = {
   hook_enabled: true,
   clicker_enabled: true,
@@ -1095,6 +1099,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       break;
     }
     case "delete_recording": {
+      mockUndo = structuredClone(mock);
       const id = String(args?.id ?? "");
       const recordings = mock.replay.recordings.filter((entry) => entry.id !== id);
       mock = {
@@ -1110,6 +1115,12 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       };
       break;
     }
+    case "undo_delete":
+      if (mockUndo) {
+        mock = mockUndo as View;
+        mockUndo = null;
+      }
+      break;
     case "select_recording":
       mock = { ...mock, replay: { ...mock.replay, selected: String(args?.id ?? "") } };
       break;
@@ -1179,6 +1190,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       break;
     }
     case "delete_macro":
+      mockUndo = structuredClone(mock);
       mock = { ...mock, macros: mock.macros.filter((entry) => entry.id !== args?.id) };
       break;
     case "run_macro": {
@@ -1268,6 +1280,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       });
       break;
     case "remove_mapping":
+      mockUndo = structuredClone(mock);
       mock = withMappings(profile, (mappings) => {
         mappings.splice(Number(args?.index), 1);
       });

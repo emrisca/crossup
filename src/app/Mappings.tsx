@@ -24,7 +24,7 @@ export function MappingTable({
   onPreset,
 }: {
   mappings: MappingView[];
-  onDelete: (index: number) => void;
+  onDelete: (index: number, mapping: MappingView) => void;
   onAdd: () => void;
   onPreset: (preset: "wasd" | "arrows") => void;
 }) {
@@ -84,7 +84,7 @@ export function MappingTable({
               type="button"
               className="hb__delete"
               aria-label={`Remove ${mapping.source_label} mapping`}
-              onClick={() => onDelete(index)}
+              onClick={() => onDelete(index, mapping)}
             >
               <Trash2 size={12} strokeWidth={1.7} aria-hidden="true" />
             </button>

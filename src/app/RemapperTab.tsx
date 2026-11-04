@@ -3,6 +3,7 @@ import type { MappingView, View } from "@/bridge";
 import { Switch } from "./Dialogs";
 import { MappingTable } from "./Mappings";
 import { Sidebar } from "./Sidebar";
+import { pushUndo } from "./undo";
 
 /**
  * The original tool, unchanged: profiles on the left, the mapping table for the
@@ -139,7 +140,10 @@ export function RemapperTab({
         <MappingTable
           mappings={profile.mappings}
           onAdd={() => onEdit(null)}
-          onDelete={(index) => run("remove_mapping", { profile: profile.id, index })}
+          onDelete={(index, mapping) => {
+            void run("remove_mapping", { profile: profile.id, index });
+            pushUndo(`Removed the ${mapping.source_label} mapping`);
+          }}
           onPreset={(preset) => run("apply_preset", { profile: profile.id, preset })}
         />
       </section>

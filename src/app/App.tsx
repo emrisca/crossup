@@ -19,6 +19,8 @@ import { MacrosTab } from "./MacrosTab";
 import { RemapperTab } from "./RemapperTab";
 import { ReplayerTab } from "./ReplayerTab";
 import { TyperTab } from "./TyperTab";
+import { UndoBar } from "./UndoBar";
+import { clearUndo, useUndoEntry } from "./undo";
 import { UpdateBanner } from "./UpdateBanner";
 
 /** The tools, in the order they sit in the tab strip. */
@@ -103,6 +105,29 @@ function Shell() {
     },
     [],
   );
+
+  // One delete is undoable at a time. The bar offers it, and the shortcut that
+  // every other Windows app uses does the same thing without reaching the bar.
+  const undoEntry = useUndoEntry();
+  const undoNow = useCallback(async () => {
+    const after = undoEntry?.after;
+    clearUndo();
+    await run("undo_delete");
+    after?.();
+  }, [run, undoEntry]);
+
+  useEffect(() => {
+    if (!undoEntry) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      const target = event.target as HTMLElement | null;
+      if (target && /^(INPUT|TEXTAREA)$/.test(target.tagName)) return;
+      event.preventDefault();
+      void undoNow();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undoEntry, undoNow]);
 
   /** Whether the sign-in entry is on, read from the latest view by the effect below. */
   const autostartOn = useRef(false);
@@ -282,6 +307,8 @@ function Shell() {
           {error}
         </p>
       )}
+
+      <UndoBar onUndo={undoNow} />
 
       <footer className="hb__foot">
         <span>{view.installed ? "Keyboard hook installed" : "Preview mode"}</span>
