@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "motion/react";
-
-const PRESS = { type: "spring", stiffness: 520, damping: 34, mass: 0.45 } as const;
 
 export type UsePressDepthOptions = {
   disabled?: boolean;
@@ -139,7 +136,10 @@ export function usePressDepth(
 
 export type PressDepthProps = {
   children: React.ReactNode;
+  /** How far the face sinks while held. */
   depth?: number;
+  /** Retired: the face no longer tilts toward the pointer. Kept so the call
+   *  sites that still pass it keep compiling. */
   tilt?: number;
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
@@ -150,19 +150,17 @@ export type PressDepthProps = {
 
 export function PressDepth({
   children,
-  depth = 4,
-  tilt = 7,
+  depth = 2,
   disabled = false,
   type = "button",
   onClick,
   className = "",
   "aria-label": ariaLabel,
 }: PressDepthProps) {
-  const reduced = useReducedMotion();
-  const { pressed, origin, ref, bind } = usePressDepth({ disabled });
+  const { pressed, ref, bind } = usePressDepth({ disabled });
 
-  const lean = pressed && origin && !reduced ? origin : null;
-
+  // One flat face: the fill, the radius and the press travel all live in
+  // `.hb__press` in app.css, beside the rest of the app's chrome.
   return (
     <button
       ref={ref}
@@ -172,38 +170,14 @@ export function PressDepth({
       data-pressed={pressed ? "" : undefined}
       onClick={onClick}
       style={{
-        paddingBottom: depth,
+        transform: pressed ? `translateY(${depth}px)` : undefined,
         touchAction: "manipulation",
         WebkitTapHighlightColor: "transparent",
       }}
-      className="group relative inline-flex select-none rounded-[9px] align-middle outline-none disabled:opacity-50"
+      className={`hb__press ${className}`.trim()}
       {...bind}
     >
-      <span
-        aria-hidden
-        style={{ top: depth }}
-        className="absolute inset-x-0 bottom-0 rounded-[9px] bg-stone-300 dark:bg-white/25"
-      />
-      <motion.span
-        initial={false}
-        animate={{
-          y: pressed ? depth : 0,
-          rotateX: lean ? -lean.y * tilt : 0,
-          rotateY: lean ? lean.x * tilt : 0,
-        }}
-        transition={reduced ? { duration: 0 } : PRESS}
-        style={{ transformPerspective: 340 }}
-        className={`relative inline-flex h-9 items-center justify-center gap-2 rounded-[9px] border border-stone-200 bg-white px-3.5 text-[13px] font-medium text-stone-700 group-focus-visible:ring-2 group-focus-visible:ring-stone-400 dark:border-white/[0.16] dark:bg-[#1D1D1A] dark:text-stone-200 dark:group-focus-visible:ring-stone-500 ${className}`}
-      >
-        <motion.span
-          aria-hidden
-          initial={false}
-          animate={{ opacity: pressed ? 0 : 1 }}
-          transition={reduced ? { duration: 0 } : PRESS}
-          className="pointer-events-none absolute inset-0 rounded-[9px] shadow-[inset_0_1.5px_0_rgba(255,255,255,0.95),inset_0_-1px_0_rgba(28,25,23,0.06)] dark:shadow-[inset_0_1.5px_0_rgba(255,255,255,0.09)]"
-        />
-        {children}
-      </motion.span>
+      {children}
     </button>
   );
 }

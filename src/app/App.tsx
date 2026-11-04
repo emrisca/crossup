@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Power, Settings } from "lucide-react";
+import { Settings, SlidersHorizontal } from "lucide-react";
 import { PressDepth } from "@/components/interior/press-depth";
 import { Tabs } from "@/components/interior/tabs";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
@@ -23,27 +23,94 @@ import { UndoBar } from "./UndoBar";
 import { clearUndo, useUndoEntry } from "./undo";
 import { UpdateBanner } from "./UpdateBanner";
 
-/** The tools, in the order they sit in the tab strip. */
+/**
+ * The tools, in the order they sit in the tab strip. Each carries the line the
+ * Tools menu prints under its name, because the switch that used to explain
+ * itself inside the tab now lives in the header.
+ */
 const TOOLS = [
-  { value: "remapper", label: "Remapper" },
-  { value: "clicker", label: "Auto clicker" },
-  { value: "typer", label: "Typer" },
-  { value: "macros", label: "Macros" },
-  { value: "replay", label: "Replayer" },
+  { value: "remapper", label: "Remapper", note: "Off lets every key through untouched." },
+  { value: "clicker", label: "Auto clicker", note: "Off stops the clicker shortcut." },
+  { value: "typer", label: "Typer", note: "Off stops the typing shortcut." },
+  { value: "macros", label: "Macros", note: "Off stops every macro shortcut." },
+  { value: "replay", label: "Replayer", note: "Off stops recording and replay." },
 ];
 
 /**
  * The mark beside a tab's name: the tool's own switch, read without opening the
- * tab. A solid power glyph is a tool that is on; a faded outline is one that is
- * off, so the strip answers "what is working?" at a glance.
+ * tab. A green dot is a tool that is on, a red one is a tool that is off, so the
+ * strip answers "what is working?" at a glance. The dot carries a halo only when
+ * on, so the state survives a reader who cannot tell the two hues apart.
  */
 function ToolMark({ on }: { on: boolean }) {
+  return <span className={`hb__tab-mark${on ? "" : " hb__tab-mark--off"}`} />;
+}
+
+/**
+ * The five tool switches, in one place in the header instead of each tab growing
+ * its own. Flipping a switch leaves the menu open — choosing two tools in a row
+ * should not mean opening the menu twice — so the trigger is the way it closes,
+ * with Escape as the keyboard's exit.
+ */
+function ToolMenu({
+  tools,
+  onToggle,
+}: {
+  tools: { value: string; label: string; note: string; on: boolean }[];
+  onToggle: (tool: string, enabled: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setOpen(false);
+      trigger.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
-    <Power
-      size={11}
-      strokeWidth={on ? 2.4 : 1.6}
-      className={`hb__tab-mark${on ? "" : " hb__tab-mark--off"}`}
-    />
+    <div className="hb__tools">
+      <button
+        ref={trigger}
+        type="button"
+        className={`hb__pill hb__tools-trigger${open ? " hb__tools-trigger--open" : ""}`}
+        aria-expanded={open}
+        aria-controls="hb-tools-menu"
+        title="Switch tools on and off"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <SlidersHorizontal size={12} strokeWidth={1.8} aria-hidden="true" />
+        Tools
+      </button>
+
+      {open && (
+        <div className="hb__tools-menu" id="hb-tools-menu" role="group" aria-label="Tools">
+          {tools.map((tool) => (
+            <button
+              key={tool.value}
+              type="button"
+              role="switch"
+              aria-checked={tool.on}
+              className="hb__tool-row"
+              onClick={() => onToggle(tool.value, !tool.on)}
+            >
+              <ToolMark on={tool.on} />
+              <span className="hb__row-text">
+                <span className="hb__row-name">{tool.label}</span>
+                <span className="hb__row-note">{tool.note}</span>
+              </span>
+              <span className="hb__switch" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -191,7 +258,7 @@ function Shell() {
 
   const native = isTauri();
   // The header reports whether the hook is in place at all. What each tool does
-  // with it is that tool's own switch, in its own tab.
+  // with it is that tool's own switch, in the header's Tools menu.
   const live = native && view.installed;
   const status = !native ? "Preview" : live ? "Active" : "No hook";
   const offCount = [
@@ -227,8 +294,12 @@ function Shell() {
     macros: view.macros_enabled,
     replay: view.replay_enabled,
   };
+  // The same five switches, drawn once in the header. The strip keeps the dot,
+  // which is a status rather than a control, so there is one place to flip them.
+  const tools = TOOLS.map((tool) => ({ ...tool, on: toolOn[tool.value] }));
   const tabs = TOOLS.map((tool) => ({
-    ...tool,
+    value: tool.value,
+    label: tool.label,
     indicator: <ToolMark on={toolOn[tool.value]} />,
     indicatorLabel: toolOn[tool.value] ? "on" : "off",
   }));
@@ -258,7 +329,7 @@ function Shell() {
         </span>
 
         {offCount > 0 && (
-          <span className="hb__pill hb__pill--off" title="A tool is switched off in its own tab">
+          <span className="hb__pill hb__pill--off" title="A tool is switched off in the Tools menu">
             {offCount === 1 ? "1 tool off" : `${offCount} tools off`}
           </span>
         )}
@@ -281,6 +352,10 @@ function Shell() {
         <span className="hb__brand-note" title="Program currently in front">
           {view.program || "no foreground program"}
         </span>
+        <ToolMenu
+          tools={tools}
+          onToggle={(tool, enabled) => void run("set_tool_enabled", { tool, enabled })}
+        />
         <button
           type="button"
           className="hb__icon"

@@ -224,6 +224,7 @@ button.hb__row { cursor: pointer; }
 }
 
 .hb__switch[aria-checked="true"]::after { transform: translateX(15px); }
+.hb__switch:disabled { opacity: 0.5; cursor: default; }
 
 .hb__process {
   display: flex; align-items: center; gap: 9px; width: 100%;
@@ -258,11 +259,59 @@ button.hb__row { cursor: pointer; }
   padding: 0 10px; border-radius: 16px;
 }
 
-/* The on/off mark beside a tab's name: a tool that is on reads solid in the
-   palette's accent, one that is off reads as a faded outline. The strip then
-   answers "what is working?" without a trip through five tabs. */
-.hb__tab-mark { color: var(--accent); }
-.hb__tab-mark--off { color: var(--ink-3); opacity: 0.55; }
+/* The on/off mark beside a tab's name: green is a tool that is on, red is one
+   that is off, so the strip answers "what is working?" without a trip through
+   five tabs. The halo rides the green only, so the state is legible to a reader
+   who cannot separate the two hues, and a 6px dot still reads at tab size. */
+.hb__tab-mark {
+  width: 6px; height: 6px; flex: none; border-radius: 999px;
+  background: var(--moss);
+  box-shadow: 0 0 0 2.5px color-mix(in oklab, var(--moss) 22%, transparent);
+}
+
+.hb__tab-mark--off {
+  background: var(--flag);
+  box-shadow: none;
+}
+
+/* The header's Tools menu: the five switches in one place. The trigger is a pill
+   so it sits with the status pills, and the menu hangs under it — right-aligned,
+   because it opens from the right end of the header. */
+.hb__tools { position: relative; flex: none; }
+
+.hb__tools-trigger {
+  border: 0; font: inherit; font-size: 11px; font-weight: 550;
+  color: var(--ink-2); cursor: pointer; transition: color 0.14s ease;
+}
+.hb__tools-trigger:hover { color: var(--ink); }
+.hb__tools-trigger--open {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-row);
+}
+
+.hb__tools-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  display: flex; width: 292px; flex-direction: column; gap: 2px;
+  padding: 6px; border: 1px solid var(--hairline); border-radius: 12px;
+  background: var(--panel); box-shadow: var(--shadow-float);
+  animation: hb-menu-in 0.13s cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@keyframes hb-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.hb__tool-row {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 7px 8px; border: 0; border-radius: 8px; background: none;
+  color: var(--ink-2); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color 0.14s ease;
+}
+.hb__tool-row:hover { background: var(--sub); }
+.hb__tool-row .hb__switch { cursor: inherit; }
+.hb__tool-row[aria-checked="true"] .hb__switch { background: var(--accent); }
+.hb__tool-row[aria-checked="true"] .hb__switch::after { transform: translateX(15px); }
 
 .hb__tabs { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 
@@ -453,8 +502,22 @@ button.hb__row { cursor: pointer; }
 
 @keyframes hb-pulse { 50% { opacity: 0.3; } }
 
-.hb__press--flag { color: var(--flag); }
-.hb__press--flag * { color: var(--flag); }
+/* The app's one button: a flat fill, an 8px radius, no ledge and no tilt. A
+   press sinks it a pixel; everything else it needs is the palette. */
+.hb__press {
+  display: inline-flex; height: 32px; align-items: center; justify-content: center;
+  gap: 6px; padding: 0 12px; border: 0; border-radius: 8px;
+  background: var(--accent); color: var(--panel);
+  font: inherit; font-size: 12.5px; font-weight: 550; white-space: nowrap;
+  cursor: pointer; transition: transform 0.12s ease, filter 0.14s ease;
+}
+
+.hb__press:hover { filter: brightness(1.07); }
+.hb__press:disabled { opacity: 0.5; cursor: default; filter: none; }
+
+/* The one button that stops something, so it carries the flag colour instead. */
+.hb__press--flag { background: var(--flag); }
+.hb__press--flag * { color: inherit; }
 
 /* ── the block builder ──────────────────────────────────────────── */
 

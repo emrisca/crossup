@@ -190,12 +190,6 @@ export function TyperTab({
               Start typing
             </PressDepth>
           )}
-          <span className="hb__field-label">Typer</span>
-          <Switch
-            checked={view.typer_enabled}
-            label="Typer enabled"
-            onChange={(enabled) => run("set_tool_enabled", { tool: "typer", enabled })}
-          />
           <HotkeyField
             keyboardOnly
             label="Start shortcut"
@@ -252,7 +246,7 @@ export function TyperTab({
 
         <Card
           title="How it types"
-          note="The typer keeps a human pace. Each word gets its own speed, a little either side of the one asked for, and between words the run now and then stops to think. A mistyped character becomes a wrong key, a pause and a backspace instead of a silent correction."
+          note="The typer keeps a human pace. Each word gets its own speed, a little either side of the one asked for, and the run stops to think at a full stop and now and then inside a long sentence. A mistyped character becomes a wrong key, a pause and a backspace instead of a silent correction."
         >
           <div className="hb__rows">
             <Line label="Pace" note="Words a minute, at five characters to the word.">
@@ -268,6 +262,26 @@ export function TyperTab({
                 onChange={(event) => update({ wpm: Number(event.target.value) })}
               />
               <span className="hb__readout">{draft.wpm} wpm</span>
+            </Line>
+
+            <Line
+              label="Pace fluctuation"
+              note="How far each word's pace may wander from the slider, either side. Zero types like a metronome; ten percent loses the rhythm and finds it again. A deadline keeps the exact pace instead, because the last keystroke has to land on time."
+            >
+              <input
+                className="hb__range"
+                type="range"
+                min={0}
+                max={25}
+                step={1}
+                value={Math.round(draft.paceVariation * 100)}
+                disabled={running || draft.deadlineSecs !== null}
+                aria-label="Pace fluctuation"
+                onChange={(event) =>
+                  update({ paceVariation: Number(event.target.value) / 100 })
+                }
+              />
+              <span className="hb__readout">{Math.round(draft.paceVariation * 100)}%</span>
             </Line>
 
             <Line
@@ -290,11 +304,12 @@ export function TyperTab({
 
             <Line
               label="Thinking pauses"
-              note="Now and then the run stops between words, as though the next sentence were being worked out. Each pause is picked at random up to this length, and it counts towards the run's time."
+              note="Whether the run stops between words at all. Each pause is picked at random up to this length, and it counts towards the run's time."
             >
               <Switch
                 checked={draft.thinkPauses}
                 label="Thinking pauses"
+                disabled={running}
                 onChange={(thinkPauses) => update({ thinkPauses })}
               />
               <input
@@ -309,6 +324,30 @@ export function TyperTab({
                 onChange={(event) => update({ thinkMaxSecs: Number(event.target.value) })}
               />
               <span className="hb__readout">{draft.thinkMaxSecs.toFixed(1)} s</span>
+            </Line>
+
+            <Line
+              label="After each sentence"
+              note="A stop after every full stop, the beat before the next thought."
+            >
+              <Switch
+                checked={draft.thinkAfterSentence}
+                label="Pause after each sentence"
+                disabled={running || !draft.thinkPauses}
+                onChange={(thinkAfterSentence) => update({ thinkAfterSentence })}
+              />
+            </Line>
+
+            <Line
+              label="Inside long sentences"
+              note="A stop after a random fifteen to thirty words, for a sentence that runs on without a full stop. It counts from the last pause, so the two rules do not stack up."
+            >
+              <Switch
+                checked={draft.thinkInLongSentence}
+                label="Pause inside long sentences"
+                disabled={running || !draft.thinkPauses}
+                onChange={(thinkInLongSentence) => update({ thinkInLongSentence })}
+              />
             </Line>
 
             <Line
@@ -427,7 +466,7 @@ export function TyperTab({
           </p>
           <p className="hb__card-note">
             Only one run happens at a time. Starting the typer while the clicker or a macro
-            runs is refused with a message, and turning the typer off in its tab stops it.
+            runs is refused with a message, and turning the typer off in the Tools menu stops it.
           </p>
           <p className="hb__card-note">
             Escape ×3 stops the clicker, and the shortcut above stops the typer. Both are
@@ -446,6 +485,9 @@ export function TyperTab({
               countdownSecs: 3,
               thinkPauses: true,
               thinkMaxSecs: 2.5,
+              thinkAfterSentence: true,
+              thinkInLongSentence: true,
+              paceVariation: 0.08,
             })
           }
         >

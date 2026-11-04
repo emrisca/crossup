@@ -9,10 +9,9 @@ import { pushUndo } from "./undo";
  * The original tool, unchanged: profiles on the left, the mapping table for the
  * selected profile on the right.
  *
- * Two switches sit above that table and they mean different things, so they are
- * spelled out rather than left as two identical toggles a row apart: one turns
- * the whole remapper off, the other switches off just the mappings of the
- * profile on screen.
+ * The remapper's own switch lives in the header's Tools menu, with the other
+ * four tools; the one switch left above the table asks the narrower question —
+ * whether these mappings apply to the program in front.
  */
 export function RemapperTab({
   view,
@@ -60,24 +59,8 @@ export function RemapperTab({
           <span className="hb__spacer" />
         </div>
 
-        <div className="hb__switch-rows">
-          <div className="hb__row">
-            <span className="hb__row-text">
-              <span className="hb__row-name">Remapper</span>
-              <span className="hb__row-note">
-                Off lets every key through untouched, in every program.
-              </span>
-            </span>
-            <Switch
-              checked={view.hook_enabled}
-              label="Remapper enabled"
-              onChange={(enabled) =>
-                run("set_tool_enabled", { tool: "remapper", enabled })
-              }
-            />
-          </div>
-
-          {!profile.global && (
+        {!profile.global && (
+          <div className="hb__switch-rows">
             <div className="hb__row">
               <span className="hb__row-text">
                 <span className="hb__row-name">
@@ -96,8 +79,8 @@ export function RemapperTab({
                 }
               />
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="hb__actions">
           <PressDepth depth={3} tilt={5} onClick={() => onEdit(null)}>

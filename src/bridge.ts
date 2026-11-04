@@ -247,10 +247,16 @@ export type TyperSettings = {
   countdownSecs: number;
   /** The start/stop shortcut, in the spelling the other tools use. */
   hotkey: string;
-  /** Whether the run stops between words now and then to think. */
+  /** Whether the run stops between words at all. */
   thinkPauses: boolean;
   /** The longest such stop, in seconds. */
   thinkMaxSecs: number;
+  /** Whether a run stops after a full stop, before the next sentence. */
+  thinkAfterSentence: boolean;
+  /** Whether a run also stops inside a long sentence, after 15 to 30 words. */
+  thinkInLongSentence: boolean;
+  /** How far each word's pace may wander, as a share either side. */
+  paceVariation: number;
 };
 
 export const DEFAULT_TYPER: TyperSettings = {
@@ -262,6 +268,9 @@ export const DEFAULT_TYPER: TyperSettings = {
   hotkey: "",
   thinkPauses: true,
   thinkMaxSecs: 2.5,
+  thinkAfterSentence: true,
+  thinkInLongSentence: true,
+  paceVariation: 0.08,
 };
 
 /** What a run is doing, as the shell reports it. */
@@ -923,8 +932,17 @@ function mockPlan(text: string, settings: TyperSettings): TyperPlan {
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const resting = (Math.min(400, Math.max(5, settings.wpm)) * 5) / 60;
   const longest = Math.min(8, Math.max(0.35, settings.thinkMaxSecs));
-  const perWord = settings.thinkPauses ? (0.08 * (0.35 + longest)) / 2 : 0;
-  const thinking = words * perWord;
+  // One stop per sentence, plus one every nineteen words or so of the
+  // sentences that run on, matching the Rust planner.
+  const sentences = (text.match(/[.!?](?=\s|$)/g) ?? []).length;
+  const pausing =
+    settings.thinkPauses &&
+    (settings.thinkAfterSentence || settings.thinkInLongSentence);
+  const pauses = !pausing
+    ? 0
+    : (settings.thinkAfterSentence ? sentences : 0) +
+      (settings.thinkInLongSentence ? Math.max(0, words - sentences) / 22.5 : 0);
+  const thinking = pauses * ((0.35 + longest) / 2);
   // Thinking comes out of a deadline rather than pushing the last keystroke
   // past it, exactly as the Rust planner does it.
   const asked = settings.deadlineSecs
@@ -1233,15 +1251,31 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
     case "snapshot":
       break;
     case "set_tool_enabled": {
+      // All five tools, in the same shape the Rust command takes them: switching
+      // a tool off also stops the run that belongs to it, so the preview cannot
+      // show a typer still typing after its switch says off.
       const enabled = Boolean(args?.enabled);
-      mock =
-        args?.tool === "remapper"
-          ? { ...mock, hook_enabled: enabled }
-          : args?.tool === "clicker"
-            ? { ...mock, clicker_enabled: enabled }
-            : args?.tool === "macros"
-              ? { ...mock, macros_enabled: enabled }
-              : mock;
+      switch (args?.tool) {
+        case "remapper":
+          mock = { ...mock, hook_enabled: enabled };
+          break;
+        case "clicker":
+          mock = { ...mock, clicker_enabled: enabled };
+          break;
+        case "macros":
+          mock = { ...mock, macros_enabled: enabled };
+          break;
+        case "typer":
+          if (!enabled && mockActivity.running === "typer") mockStopTyper("stopped");
+          mock = { ...mock, typer_enabled: enabled };
+          break;
+        case "replay":
+          if (!enabled && mockActivity.running === "replay") mockStopReplay();
+          mock = { ...mock, replay_enabled: enabled };
+          break;
+        default:
+          break;
+      }
       break;
     }
     case "set_preferences":

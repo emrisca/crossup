@@ -311,14 +311,6 @@ export function AutoClickerTab({
               Start clicking
             </PressDepth>
           )}
-          <span className="hb__field-label">Clicker</span>
-          <Switch
-            checked={view.clicker_enabled}
-            label="Auto clicker enabled"
-            onChange={(enabled) =>
-              run("set_tool_enabled", { tool: "clicker", enabled })
-            }
-          />
           <HotkeyField
             label="Start shortcut"
             note="Press a key combination, a mouse button, or a wheel notch. A side button is recorded as Mouse4 or Mouse5, and a wheel notch as WheelUp or WheelDown."

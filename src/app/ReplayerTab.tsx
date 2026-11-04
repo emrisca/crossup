@@ -13,7 +13,6 @@ import {
   type View,
 } from "@/bridge";
 import { Card, Line } from "./AutoClickerTab";
-import { Switch } from "./Dialogs";
 import { HotkeyField } from "./HotkeyField";
 import { NumberField } from "./NumberField";
 import { pushUndo } from "./undo";
@@ -168,12 +167,6 @@ export function ReplayerTab({
               Replay
             </PressDepth>
           )}
-          <span className="hb__field-label">Replayer</span>
-          <Switch
-            checked={view.replay_enabled}
-            label="Replayer enabled"
-            onChange={(enabled) => run("set_tool_enabled", { tool: "replay", enabled })}
-          />
         </div>
 
         {noRecordKey && (

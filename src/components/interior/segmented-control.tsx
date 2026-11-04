@@ -118,7 +118,7 @@ export function SegmentedControl({
     <div
       role="radiogroup"
       aria-label={label}
-      className={`relative inline-block select-none rounded-[9px] border border-stone-200 bg-stone-100/70 p-[3px] shadow-[inset_0_1px_2px_rgba(28,25,23,0.07)] dark:border-white/[0.16] dark:bg-[#1D1D1A] dark:shadow-[inset_0_1px_2px_rgba(0,0,0,0.45)] ${className}`}
+      className={`relative inline-block select-none rounded-[8px] border border-[var(--hairline)] bg-[var(--sub)] p-[3px] ${className}`}
     >
       <div
         className="relative grid"
@@ -130,10 +130,10 @@ export function SegmentedControl({
             aria-hidden
             className={`${SEG} pointer-events-none ${
               option.disabled
-                ? "text-stone-300 dark:text-stone-600"
+                ? "text-[var(--ink-3)] opacity-50"
                 : hovered === i && i !== index
-                  ? "text-stone-700 dark:text-stone-200"
-                  : "text-stone-500 dark:text-stone-400"
+                  ? "text-[var(--ink)]"
+                  : "text-[var(--ink-3)]"
             }`}
           >
             {option.label}
@@ -142,7 +142,7 @@ export function SegmentedControl({
 
         <motion.div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 left-0 overflow-hidden rounded-[6px] bg-stone-800 shadow-[0_1px_2px_rgba(28,25,23,0.28)] dark:bg-stone-100 dark:shadow-[0_1px_2px_rgba(0,0,0,0.5)]"
+          className="pointer-events-none absolute inset-y-0 left-0 overflow-hidden rounded-[5px] bg-[var(--accent)]"
           style={{ width: `${100 / count}%`, x: thumbX }}
           initial={false}
         >
@@ -158,7 +158,7 @@ export function SegmentedControl({
               {options.map((option) => (
                 <span
                   key={option.value}
-                  className={`${SEG} text-stone-50 dark:text-stone-900`}
+                  className={`${SEG} text-[var(--panel)]`}
                 >
                   {option.label}
                 </span>

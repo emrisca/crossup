@@ -39,17 +39,21 @@ const CHARS_A_WORD: f64 = 5.0;
 const MAX_CPS: f64 = 25.0;
 /// The largest share of characters a run may mistype.
 const MAX_TYPO: f64 = 0.25;
-/// The share of words after which a run may stop to think. One in twelve, so a
-/// paragraph takes a few pauses and a single sentence takes none.
-const THINK_CHANCE: f64 = 0.08;
 /// The shortest stop a thinking pause can be, and the longest one the setting
 /// may ask for. The floor keeps a pause visible instead of a stutter.
 const THINK_MIN_SECS: f64 = 0.35;
 const MAX_THINK_SECS: f64 = 8.0;
 const DEFAULT_THINK_SECS: f64 = 2.5;
-/// How far the pace may wander from the asked speed, either side. Small enough
-/// that a paragraph still averages the number on the slider.
-const PACE_DRIFT: f64 = 0.08;
+/// How long a sentence may run before the typer stops inside it: the pause
+/// lands after somewhere in this many words, counted from the last pause.
+/// Fifteen reads as a comma; thirty is a paragraph written without a full stop.
+const LONG_SENTENCE_MIN_WORDS: u32 = 15;
+const LONG_SENTENCE_MAX_WORDS: u32 = 30;
+/// The largest share the pace may wander from the asked speed, either side.
+const MAX_PACE_DRIFT: f64 = 0.5;
+/// What a fresh typer wanders: small enough that a paragraph still averages the
+/// number on the slider.
+const DEFAULT_PACE_DRIFT: f64 = 0.08;
 /// The pace a fresh typer starts at: an unhurried person.
 const DEFAULT_WPM: f64 = 65.0;
 /// The shortcut a fresh typer comes up with. A slot reading "not set" is a
@@ -82,11 +86,20 @@ pub struct TyperSettings {
     pub countdown_secs: u32,
     /// The start/stop shortcut, in the same spelling the other tools use.
     pub hotkey: String,
-    /// Whether a run stops between words now and then, the way somebody
-    /// thinking about the next sentence does.
+    /// Whether a run stops between words at all. The two switches below say
+    /// where those stops land.
     pub think_pauses: bool,
     /// The longest such stop, in seconds. A run picks a shorter one at random.
     pub think_max_secs: f64,
+    /// Whether a run stops after a full stop, the beat before the next thought.
+    pub think_after_sentence: bool,
+    /// Whether a run also stops inside a sentence that runs on, after a random
+    /// fifteen to thirty words.
+    pub think_in_long_sentence: bool,
+    /// How far each word's pace may sit from the one on the slider, as a share
+    /// either side. Zero is a metronome; a quarter is a person losing the rhythm
+    /// and finding it again.
+    pub pace_variation: f64,
 }
 
 impl Default for TyperSettings {
@@ -100,6 +113,9 @@ impl Default for TyperSettings {
             hotkey: DEFAULT_HOTKEY.to_string(),
             think_pauses: true,
             think_max_secs: DEFAULT_THINK_SECS,
+            think_after_sentence: true,
+            think_in_long_sentence: true,
+            pace_variation: DEFAULT_PACE_DRIFT,
         }
     }
 }
@@ -117,14 +133,38 @@ impl TyperSettings {
         self.think_max_secs.clamp(THINK_MIN_SECS, MAX_THINK_SECS)
     }
 
-    /// The pause a plan should budget for per word, in seconds: the chance of a
-    /// pause times the middle of its range.
-    fn thinking_per_word(&self) -> f64 {
-        if self.think_pauses {
-            THINK_CHANCE * (THINK_MIN_SECS + self.think_max()) / 2.0
-        } else {
-            0.0
+    /// How far this run's pace may wander either side of the asked one.
+    fn pace_variation(&self) -> f64 {
+        self.pace_variation.clamp(0.0, MAX_PACE_DRIFT)
+    }
+
+    /// Whether this run stops between words at all: the master switch, and at
+    /// least one place for the stops to land.
+    fn pausing(&self) -> bool {
+        self.think_pauses && (self.think_after_sentence || self.think_in_long_sentence)
+    }
+
+    /// The pauses a draft this long is likely to take: one per sentence, plus
+    /// one every nineteen words or so of the sentences still running.
+    fn thinking_pauses(&self, words: u32, sentences: u32) -> f64 {
+        if !self.pausing() {
+            return 0.0;
         }
+        let mut pauses = 0.0;
+        if self.think_after_sentence {
+            pauses += sentences as f64;
+        }
+        if self.think_in_long_sentence {
+            let inside = words.saturating_sub(sentences) as f64;
+            pauses += inside / long_sentence_gap_mid();
+        }
+        pauses
+    }
+
+    /// What those pauses are likely to cost, in seconds: the middle of the
+    /// pause range, the same average the estimate has always used.
+    fn thinking_secs(&self, words: u32, sentences: u32) -> f64 {
+        self.thinking_pauses(words, sentences) * (THINK_MIN_SECS + self.think_max()) / 2.0
     }
 
     /// The pace the run will keep, in keystrokes a second, and whether a
@@ -133,11 +173,11 @@ impl TyperSettings {
     /// Thinking comes out of a deadline's time rather than adding to it: a
     /// deadline promises the last keystroke lands on time, so the keystrokes
     /// get what the pauses leave.
-    fn cps(&self, chars: u32, words: u32) -> (f64, bool) {
+    fn cps(&self, chars: u32, words: u32, sentences: u32) -> (f64, bool) {
         let resting = (self.wpm.clamp(5.0, 400.0) * CHARS_A_WORD) / 60.0;
         match self.deadline_secs {
             Some(secs) if chars > 0 => {
-                let thinking = words as f64 * self.thinking_per_word();
+                let thinking = self.thinking_secs(words, sentences);
                 let typing = (secs.max(1) as f64 - thinking).max(0.5);
                 let asked = chars as f64 / typing;
                 (asked.clamp(0.5, MAX_CPS), asked > MAX_CPS)
@@ -167,15 +207,32 @@ pub struct TyperPlan {
     pub clamped: bool,
 }
 
+/// The full stops that end a sentence rather than a decimal: a mark only counts
+/// when a space or the end of the draft follows it, so "3.5" is not a sentence.
+pub fn count_sentences(text: &str) -> u32 {
+    let mut count = 0;
+    let mut characters = text.chars().peekable();
+    while let Some(character) = characters.next() {
+        if !matches!(character, '.' | '!' | '?') {
+            continue;
+        }
+        if characters.peek().map_or(true, |next| next.is_whitespace()) {
+            count += 1;
+        }
+    }
+    count
+}
+
 pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
     let chars = text.chars().count() as u32;
     let words = text.split_whitespace().count() as u32;
-    let (cps, clamped) = settings.cps(chars, words);
+    let sentences = count_sentences(text);
+    let (cps, clamped) = settings.cps(chars, words, sentences);
     let char_ms = 1_000.0 / cps;
     // A correction costs three keystrokes and two of its own gaps, so it is
     // worth more time than the character it stands in for.
     let corrections = (chars as f64 * settings.typo()).round();
-    let thinking_ms = (words as f64 * settings.thinking_per_word() * 1_000.0).round();
+    let thinking_ms = (settings.thinking_secs(words, sentences) * 1_000.0).round();
     let total_ms = (chars as f64 * char_ms
         + corrections * (char_ms * 0.9 + 170.0)
         + thinking_ms)
@@ -412,7 +469,16 @@ pub fn start(
     let characters: Vec<char> = text.chars().collect();
     let char_ms = 1_000.0 / estimate.cps;
     let typo = settings.typo();
-    let think = settings.think_pauses.then(|| settings.think_max());
+    let think = settings.pausing().then(|| settings.think_max());
+    // A deadline promises the last keystroke lands on time, so it keeps the
+    // exact pace: a wandering one would land the run early or late.
+    let pace = if settings.deadline_secs.is_some() {
+        0.0
+    } else {
+        settings.pace_variation()
+    };
+    let after_sentence = settings.think_after_sentence;
+    let long_sentence = settings.think_in_long_sentence;
     let countdown = settings.countdown_secs.min(30);
     let shared = Arc::clone(runtime);
     // The thread gets its own handle: the error arm below still needs the
@@ -423,7 +489,16 @@ pub fn start(
         .name("crossup-typer".into())
         .spawn(move || {
             let outcome = drive(
-                &characters, char_ms, typo, think, countdown, &stop, &counters,
+                &characters,
+                char_ms,
+                pace,
+                typo,
+                think,
+                after_sentence,
+                long_sentence,
+                countdown,
+                &stop,
+                &counters,
             );
             counters.set(outcome);
             shared.release(0, 0.0);
@@ -443,8 +518,11 @@ pub fn start(
 fn drive(
     characters: &[char],
     char_ms: f64,
+    pace: f64,
     typo: f64,
     think: Option<f64>,
+    after_sentence: bool,
+    long_sentence: bool,
     countdown: u32,
     stop: &AtomicBool,
     progress: &Arc<Progress>,
@@ -471,11 +549,15 @@ fn drive(
     let mut roll = Roll::seeded();
     let mut checked = Instant::now();
     // Each word gets its own pace, a shade either side of the asked one, so a
-    // paragraph speeds up and eases off the way a person does.
+    // paragraph speeds up and eases off the way a person does. The share comes
+    // from the tab: zero keeps a metronome, a quarter is loose.
     let mut drift = 1.0;
+    // Words typed since the last pause, and how many the next one waits for.
+    let mut words_since_pause = 0u32;
+    let mut next_gap = long_sentence_gap(&mut roll);
     for (index, character) in characters.iter().enumerate() {
         if index == 0 || characters[index - 1].is_whitespace() {
-            drift = drift_for(roll.next());
+            drift = drift_for(roll.next(), pace);
         }
         if stop.load(Ordering::Relaxed) {
             return "stopped";
@@ -510,29 +592,34 @@ fn drive(
             other => input::text(&other.to_string()),
         }
         progress.bump();
-        // A little spread either side of the word's pace: the same gap every
-        // time is the thing that reads as a machine.
-        let gap = char_ms * drift * (0.9 + roll.next() * 0.2);
-        // Between words the run may stop, as though the next sentence were
-        // being thought about rather than typed. The pause is picked from the
-        // range the settings allow, and Stop still lands inside it.
-        let ends_word = character.is_alphanumeric()
-            && characters
-                .get(index + 1)
-                .map_or(true, |next| next.is_whitespace());
-        if let Some(longest) = think {
-            if ends_word && roll.next() < THINK_CHANCE {
-                let held = THINK_MIN_SECS + roll.next() * (longest - THINK_MIN_SECS);
-                progress.think(true);
-                let alive = wait(stop, held * 1_000.0);
-                progress.think(false);
-                if !alive {
-                    return "stopped";
-                }
-            }
-        }
+        // A little spread either side of the word's pace, scaled by the same
+        // fluctuation: the same gap every time is what reads as a machine.
+        let gap = char_ms * drift * (1.0 - pace / 2.0 + roll.next() * pace);
         if !wait(stop, gap) {
             return "stopped";
+        }
+        // Pauses land after the space that ends a word, where a person stops:
+        // at a full stop, or after fifteen to thirty words of a sentence that
+        // has not ended yet. The pause is picked from the range the settings
+        // allow, and Stop still lands inside it.
+        if character.is_whitespace() {
+            if let Some(longest) = think {
+                let ended = index > 0 && matches!(characters[index - 1], '.' | '!' | '?');
+                words_since_pause += 1;
+                let due = (ended && after_sentence)
+                    || (!ended && long_sentence && words_since_pause >= next_gap);
+                if due {
+                    words_since_pause = 0;
+                    next_gap = long_sentence_gap(&mut roll);
+                    let held = THINK_MIN_SECS + roll.next() * (longest - THINK_MIN_SECS);
+                    progress.think(true);
+                    let alive = wait(stop, held * 1_000.0);
+                    progress.think(false);
+                    if !alive {
+                        return "stopped";
+                    }
+                }
+            }
         }
     }
     "done"
@@ -585,9 +672,25 @@ fn wait(stop: &AtomicBool, ms: f64) -> bool {
 }
 
 /// How far this word's pace sits from the asked one: the middle of the range at
-/// half a roll, the edges at zero and one.
-fn drift_for(roll: f64) -> f64 {
-    1.0 - PACE_DRIFT + roll * PACE_DRIFT * 2.0
+/// half a roll, the edges at zero and one. A share of zero keeps it at one,
+/// which is the metronome.
+fn drift_for(roll: f64, share: f64) -> f64 {
+    if share <= 0.0 {
+        return 1.0;
+    }
+    1.0 - share + roll * share * 2.0
+}
+
+/// The middle of the word range a long-sentence pause waits for. The estimate
+/// uses the average; the run itself picks a fresh gap every time.
+fn long_sentence_gap_mid() -> f64 {
+    (LONG_SENTENCE_MIN_WORDS + LONG_SENTENCE_MAX_WORDS) as f64 / 2.0
+}
+
+/// How many words the run waits before stopping inside a long sentence.
+fn long_sentence_gap(roll: &mut Roll) -> u32 {
+    let span = LONG_SENTENCE_MAX_WORDS - LONG_SENTENCE_MIN_WORDS + 1;
+    LONG_SENTENCE_MIN_WORDS + ((roll.next() * span as f64) as u32).min(span - 1)
 }
 
 /// The wrong character to type for a mistype: a neighbour from the same row of
@@ -825,13 +928,82 @@ mod tests {
     #[test]
     fn the_pace_wanders_within_the_drift_and_no_further() {
         for step in 0..=32 {
-            let drift = drift_for(step as f64 / 32.0);
+            let drift = drift_for(step as f64 / 32.0, DEFAULT_PACE_DRIFT);
             assert!(
-                (1.0 - PACE_DRIFT - 1e-9..=1.0 + PACE_DRIFT + 1e-9).contains(&drift),
+                (1.0 - DEFAULT_PACE_DRIFT - 1e-9..=1.0 + DEFAULT_PACE_DRIFT + 1e-9)
+                    .contains(&drift),
                 "{drift}"
             );
         }
-        assert!(drift_for(0.0) < drift_for(1.0));
+        assert!(drift_for(0.0, DEFAULT_PACE_DRIFT) < drift_for(1.0, DEFAULT_PACE_DRIFT));
+        // No fluctuation is a metronome, whatever the roll says.
+        assert_eq!(drift_for(0.93, 0.0), 1.0);
+    }
+
+    #[test]
+    fn the_pace_variation_is_held_to_what_the_engine_can_do() {
+        let wide = TyperSettings {
+            pace_variation: 9.0,
+            ..TyperSettings::default()
+        };
+        assert!((wide.pace_variation() - MAX_PACE_DRIFT).abs() < f64::EPSILON);
+        let none = TyperSettings {
+            pace_variation: -1.0,
+            ..TyperSettings::default()
+        };
+        assert_eq!(none.pace_variation(), 0.0);
+    }
+
+    #[test]
+    fn a_sentence_is_a_full_stop_and_a_decimal_point_is_not() {
+        assert_eq!(count_sentences("One. Two! Three? "), 3);
+        assert_eq!(count_sentences("It costs 3.5 dollars. That is all"), 1);
+        assert_eq!(count_sentences("no marks here"), 0);
+    }
+
+    #[test]
+    fn a_long_sentence_gap_is_between_fifteen_and_thirty_words() {
+        let mut roll = Roll::seeded();
+        for _ in 0..64 {
+            let gap = long_sentence_gap(&mut roll);
+            assert!(
+                (LONG_SENTENCE_MIN_WORDS..=LONG_SENTENCE_MAX_WORDS).contains(&gap),
+                "{gap}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_kind_of_pause_costs_time_and_both_together_cost_more() {
+        let text = "one two three. four five six. seven eight nine";
+        let base = TyperSettings {
+            wpm: 60.0,
+            typo_rate: 0.0,
+            think_after_sentence: false,
+            think_in_long_sentence: false,
+            ..TyperSettings::default()
+        };
+        let sentences = TyperSettings {
+            think_after_sentence: true,
+            ..base.clone()
+        };
+        let inside = TyperSettings {
+            think_in_long_sentence: true,
+            ..base.clone()
+        };
+        let both = TyperSettings {
+            think_after_sentence: true,
+            think_in_long_sentence: true,
+            ..base.clone()
+        };
+        let none = plan(text, &base);
+        let stops = plan(text, &sentences);
+        let running = plan(text, &inside);
+        let all = plan(text, &both);
+        assert_eq!(none.thinking_ms, 0, "{none:?}");
+        assert!(stops.thinking_ms > 0, "{stops:?}");
+        assert!(running.thinking_ms > 0, "{running:?}");
+        assert!(all.thinking_ms > stops.thinking_ms, "{all:?} {stops:?}");
     }
 
     #[test]

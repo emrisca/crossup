@@ -392,14 +392,6 @@ export function MacrosTab({
                   Run macro
                 </PressDepth>
               )}
-              <span className="hb__field-label">Macros</span>
-              <Switch
-                checked={view.macros_enabled}
-                label="Macros enabled"
-                onChange={(enabled) =>
-                  run("set_tool_enabled", { tool: "macros", enabled })
-                }
-              />
             </div>
 
             <Card title="When it runs" tight>

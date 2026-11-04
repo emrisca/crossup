@@ -596,9 +596,10 @@ fn save_replay_options(
 
 /// Turn one tool on or off.
 ///
-/// `tool` is `remapper`, `clicker` or `macros`. Switching a tool off also stops
-/// what it was doing: a disabled clicker that kept clicking, or a remapper left
-/// holding keys down, would be worse than the global pause this replaced.
+/// `tool` is `remapper`, `clicker`, `typer`, `macros` or `replay`. Switching a
+/// tool off also stops what it was doing: a disabled clicker that kept clicking,
+/// or a remapper left holding keys down, would be worse than the global pause
+/// this replaced.
 #[tauri::command]
 fn set_tool_enabled(
     app: AppHandle,

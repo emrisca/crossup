@@ -141,8 +141,9 @@ fails here with "error calling dlltool" long before Tauri is involved.
 Tests and checks:
 
 ```bash
-cd src-tauri && cargo test   # 123 tests: SOCD modes, click grid, failsafes, macros, settings format,
-                             #             overlay coordinate maths, sign-in entry, mouse shortcuts
+cd src-tauri && cargo test   # 141 tests: SOCD modes, click grid, failsafes, macros, typer pacing,
+                             #             settings format, overlay coordinate maths, sign-in
+                             #             entry, mouse shortcuts
 npx tsc --noEmit             # frontend types
 ```
 
@@ -202,9 +203,10 @@ ever be offered.
 - **Tray** — closing hides to tray when enabled. Right-click for the menu (open,
   stop a run, quit); left-click brings the window back. The two are separate, so
   a right click opens the menu instead of raising the window.
-- **Its own switch** — each tab has an on/off switch. Turning the remapper off
-  lets every key through untouched and the mapping table says so in red.
-  Shortcuts follow the switch, and switching a tool off stops any run it owns.
+- **Tools menu** — the header's Tools button holds one switch per tool, and it
+  stays open while switches are flipped. Turning the remapper off lets every key
+  through untouched and the mapping table says so in red. Shortcuts follow the
+  switch, and switching a tool off stops any run it owns.
 - **One instance** — launching Crossup again (shortcut, Start menu, taskbar)
   raises and focuses the window that is already running and exits, so two hooks
   can never fight over the same keys.
@@ -241,8 +243,15 @@ ever be offered.
   paragraph is still there after a restart.
 - **Pace.** Words a minute, read back as keys a second and the gap between them.
   Five characters to a word, the count every words-a-minute figure uses.
+- **Pace fluctuation.** A percentage either side of the pace that each word may
+  aim for, so a paragraph speeds up and eases off the way a person does. Zero
+  types like a metronome; a deadline overrides it and keeps the exact pace.
 - **Typo rate.** The share of characters mistyped and corrected: a neighbouring
   key, a pause while it is noticed, a backspace, then the right one.
+- **Thinking pauses.** Stops between words, each up to the longest set. They
+  land after a sentence's full stop, and inside a sentence that runs on, after a
+  random fifteen to thirty words counted from the last pause. The estimate
+  counts both.
 - **Finish by.** A deadline paces the whole run so the last keystroke lands on
   time. Anything faster than 25 keys a second is clamped, and the tab says so.
 - **Countdown.** Start is pressed in this window, so the run waits before its
