@@ -247,6 +247,25 @@ characters while the clock read 0 through a two-second countdown, 0.11 after two
 characters and 2.63 when frozen, and a recorded `xyz` replayed 6 of 6 events into
 an emptied window.
 
+## Round ten: the typer thinks, and the strip says which tools are on
+
+The typer used to keep one pace for the whole draft. Each word now gets its own
+speed, up to eight percent either side of the slider, and between words the run
+sometimes stops — one word in twelve, for a random 0.35 seconds up to the
+setting — with the pill reading "Thinking" while it does. The estimate includes
+those pauses, so the run time on the tab stays honest, and a deadline takes the
+pauses out of its own budget instead of finishing late.
+
+The tab strip gained the status it was missing: a small power mark before each
+name, solid in the accent when that tool is on and a faded outline when it is
+off, with the state in the accessible name. The header still counts the tools
+that are off, and the footer still names them; the strip now answers the
+question where it is asked.
+
+Measured in the window: the four new Rust tests pin the estimate, the deadline
+arithmetic, the drift bounds and the pause clamp; typecheck and production build
+are clean.
+
 ## Criteria, scored
 
 | Criterion | Score | Evidence |

@@ -413,6 +413,48 @@ and leaves when asked, whichever control asked for it. It is not a ten for the
 reasons listed under "What I could not check" — the mono subtitle, motion states
 that were not measured, and a palette engine with no contrast guard.
 
+## Round ten, shipped in 0.2.9
+
+Two gaps, both about what the window says while nothing is happening.
+
+**The typer had one speed and no thought.** It kept a steady pace with a little
+gap jitter, so a paragraph arrived at the same rate from the first word to the
+last — fluent, and not quite like a person. It now gives every word its own pace,
+up to eight percent either side of the slider, and between words it sometimes
+stops: one chance in twelve, for a random 0.35 seconds up to the setting (2.5 by
+default, 8 at most). The pause is part of the estimate rather than a surprise
+after it, so the tab's "12s a run" is still true, and a deadline takes the
+pauses out of its own time instead of missing by them. The pill reads
+"Thinking" while the run is in one of those pauses — the difference between the
+run's own pause and the one somebody pressed matters, because only one of them
+has a Resume button.
+
+**The tabs knew nothing about their tools.** The header said "2 tools off" and
+the footer named them, but the strip itself gave no clue: five identical labels,
+one of which might open a dead tool. Each tab now carries a small power mark
+before its name, solid in the palette accent when that tool is on, a faded
+outline when it is off, with the state spelled out for a screen reader. The
+switch still lives in the tab; the mark only saves the trip.
+
+### Measured
+
+| What was checked | Result |
+| --- | --- |
+| estimate with thinking on versus off | `thinkingMs` 800 on a ten-word draft, 0 with the switch off, total longer by the same 800 ms |
+| a deadline of 20 s with thinking on | total 20,000 ms ± 60, `thinkingMs` 800 — the pauses come out of the deadline, not after it |
+| pace drift | every sampled word pace inside 0.92 to 1.08 of the asked one, and not constant |
+| a pause longer than the setting | clamped to 8 s; a zero asks for the 0.35 s floor |
+| the window | typecheck and build clean; the Typer panel carries the switch and the length slider, and the strip draws the mark on all five tabs |
+
+Four new tests cover the estimate, the deadline, the drift and the clamp; the
+suite is 137 tests, none failing.
+
+Scores unchanged at **9.5 / 10** overall, and the bar is met: this round adds
+behaviour the surface promises and a status the surface was missing, rather than
+new paint. Still not a ten for the same three reasons as before — the mono
+subtitle, motion states that were not measured, and a palette engine with no
+contrast guard.
+
 ## What I could not check
 
 - The contrast numbers are one preset. Ten presets share the same derivation, but

@@ -33,6 +33,11 @@ const LABELS: Record<TyperStatusView["status"], string> = {
 const pace = (cps: number): string =>
   `${cps.toFixed(cps < 10 ? 1 : 0)} keys a second · one every ${Math.round(1_000 / cps)} ms`;
 
+/** What the run is doing, in words: thinking is the run's own pause between
+ *  words, told apart from a pause somebody pressed. */
+const describe = (status: TyperStatusView | null): string =>
+  !status ? "Ready" : status.thinking ? "Thinking" : LABELS[status.status];
+
 /**
  * The typer: a draft, a pace, and a run that types it into whichever window is
  * in front.
@@ -150,7 +155,11 @@ export function TyperTab({
             <h1 className="hb__title">Typer</h1>
             <p className="hb__sub">
               {plan
-                ? `${pace(plan.cps)} · ${Math.round(plan.totalMs / 1_000)}s a run`
+                ? `${pace(plan.cps)} · ${Math.round(plan.totalMs / 1_000)}s a run${
+                    plan.thinkingMs >= 500
+                      ? ` · ${(plan.thinkingMs / 1_000).toFixed(1)}s of it thinking`
+                      : ""
+                  }`
                 : "paste what you want typed"}
             </p>
           </div>
@@ -160,7 +169,7 @@ export function TyperTab({
               className={`hb__gear-dot${running ? "" : " hb__gear-dot--off"}`}
               aria-hidden="true"
             />
-            {status ? LABELS[status.status] : "Ready"}
+            {describe(status)}
           </span>
         </div>
 
@@ -243,7 +252,7 @@ export function TyperTab({
 
         <Card
           title="How it types"
-          note="The typer keeps a human pace. The gaps between keystrokes vary, and a mistyped character becomes a wrong key, a pause and a backspace instead of a silent correction."
+          note="The typer keeps a human pace. Each word gets its own speed, a little either side of the one asked for, and between words the run now and then stops to think. A mistyped character becomes a wrong key, a pause and a backspace instead of a silent correction."
         >
           <div className="hb__rows">
             <Line label="Pace" note="Words a minute, at five characters to the word.">
@@ -277,6 +286,29 @@ export function TyperTab({
                 onChange={(event) => update({ typoRate: Number(event.target.value) / 100 })}
               />
               <span className="hb__readout">{Math.round(draft.typoRate * 100)}%</span>
+            </Line>
+
+            <Line
+              label="Thinking pauses"
+              note="Now and then the run stops between words, as though the next sentence were being worked out. Each pause is picked at random up to this length, and it counts towards the run's time."
+            >
+              <Switch
+                checked={draft.thinkPauses}
+                label="Thinking pauses"
+                onChange={(thinkPauses) => update({ thinkPauses })}
+              />
+              <input
+                className="hb__range"
+                type="range"
+                min={0.5}
+                max={8}
+                step={0.5}
+                value={draft.thinkMaxSecs}
+                disabled={running || !draft.thinkPauses}
+                aria-label="Longest thinking pause"
+                onChange={(event) => update({ thinkMaxSecs: Number(event.target.value) })}
+              />
+              <span className="hb__readout">{draft.thinkMaxSecs.toFixed(1)} s</span>
             </Line>
 
             <Line
@@ -331,7 +363,7 @@ export function TyperTab({
         <Card title="This run" tight>
           <div className="hb__status-row">
             <span className={`hb__pill${running ? " hb__pill--on" : ""}`}>
-              {status ? LABELS[status.status] : "Ready"}
+              {describe(status)}
             </span>
             <span className="hb__field-label">
               {wpm > 0 ? `${wpm} wpm` : plan ? `${plan.cps.toFixed(1)} keys/s` : " "}
@@ -354,7 +386,9 @@ export function TyperTab({
           <p className="hb__card-note" style={{ marginTop: 8 }}>
             {status?.status === "typing" && status.typed === 0
               ? "Click into the window that should receive the text. The run starts when the countdown ends."
-              : running
+              : status?.thinking
+                ? "Stopped between words, thinking about the next one."
+                : running
                 ? "Typing into the window that was in front when the run started."
                 : status?.status === "done"
                   ? "The whole draft is out."
@@ -404,7 +438,16 @@ export function TyperTab({
         <button
           type="button"
           className="hb__mini hb__mini--wide"
-          onClick={() => update({ wpm: 65, typoRate: 0.04, deadlineSecs: null, countdownSecs: 3 })}
+          onClick={() =>
+            update({
+              wpm: 65,
+              typoRate: 0.04,
+              deadlineSecs: null,
+              countdownSecs: 3,
+              thinkPauses: true,
+              thinkMaxSecs: 2.5,
+            })
+          }
         >
           Reset the typer to its defaults
         </button>

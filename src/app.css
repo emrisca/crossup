@@ -258,6 +258,12 @@ button.hb__row { cursor: pointer; }
   padding: 0 10px; border-radius: 16px;
 }
 
+/* The on/off mark beside a tab's name: a tool that is on reads solid in the
+   palette's accent, one that is off reads as a faded outline. The strip then
+   answers "what is working?" without a trip through five tabs. */
+.hb__tab-mark { color: var(--accent); }
+.hb__tab-mark--off { color: var(--ink-3); opacity: 0.55; }
+
 .hb__tabs { display: flex; flex: 1; min-height: 0; flex-direction: column; }
 
 .hb__tabpanel {

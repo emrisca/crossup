@@ -15,6 +15,10 @@ export type TabItem = {
   value: string;
   label: string;
   disabled?: boolean;
+  /** A mark before the name: a tool's on/off state, or a count. */
+  indicator?: ReactNode;
+  /** The words that mark stands for, because the glyph is hidden from a reader. */
+  indicatorLabel?: string;
 };
 
 export type TabsActivation = "automatic" | "manual";
@@ -265,15 +269,27 @@ export function Tabs({
                     : "text-[var(--ink-3)] hover:bg-[var(--sub)] hover:text-[var(--ink-2)]"
               }`}
             >
-              <span className="relative grid place-items-center leading-[1.4]">
-                <span aria-hidden className="invisible col-start-1 row-start-1 font-medium">
-                  {item.label}
+              <span className="relative flex items-center gap-[6px] leading-[1.4]">
+                {item.indicator ? (
+                  <span aria-hidden className="grid place-items-center">
+                    {item.indicator}
+                  </span>
+                ) : null}
+                <span className="grid place-items-center">
+                  <span aria-hidden className="invisible col-start-1 row-start-1 font-medium">
+                    {item.label}
+                  </span>
+                  <span
+                    className={`col-start-1 row-start-1 ${selected ? "font-medium" : ""}`}
+                  >
+                    {item.label}
+                  </span>
                 </span>
-                <span
-                  className={`col-start-1 row-start-1 ${selected ? "font-medium" : ""}`}
-                >
-                  {item.label}
-                </span>
+                {/* The state follows the name, so a reader hears "Remapper, on"
+                    rather than "on Remapper". */}
+                {item.indicatorLabel ? (
+                  <span className="sr-only">, {item.indicatorLabel}</span>
+                ) : null}
               </span>
             </button>
           );

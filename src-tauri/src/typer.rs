@@ -39,6 +39,17 @@ const CHARS_A_WORD: f64 = 5.0;
 const MAX_CPS: f64 = 25.0;
 /// The largest share of characters a run may mistype.
 const MAX_TYPO: f64 = 0.25;
+/// The share of words after which a run may stop to think. One in twelve, so a
+/// paragraph takes a few pauses and a single sentence takes none.
+const THINK_CHANCE: f64 = 0.08;
+/// The shortest stop a thinking pause can be, and the longest one the setting
+/// may ask for. The floor keeps a pause visible instead of a stutter.
+const THINK_MIN_SECS: f64 = 0.35;
+const MAX_THINK_SECS: f64 = 8.0;
+const DEFAULT_THINK_SECS: f64 = 2.5;
+/// How far the pace may wander from the asked speed, either side. Small enough
+/// that a paragraph still averages the number on the slider.
+const PACE_DRIFT: f64 = 0.08;
 /// The pace a fresh typer starts at: an unhurried person.
 const DEFAULT_WPM: f64 = 65.0;
 /// The shortcut a fresh typer comes up with. A slot reading "not set" is a
@@ -71,6 +82,11 @@ pub struct TyperSettings {
     pub countdown_secs: u32,
     /// The start/stop shortcut, in the same spelling the other tools use.
     pub hotkey: String,
+    /// Whether a run stops between words now and then, the way somebody
+    /// thinking about the next sentence does.
+    pub think_pauses: bool,
+    /// The longest such stop, in seconds. A run picks a shorter one at random.
+    pub think_max_secs: f64,
 }
 
 impl Default for TyperSettings {
@@ -82,6 +98,8 @@ impl Default for TyperSettings {
             deadline_secs: None,
             countdown_secs: 3,
             hotkey: DEFAULT_HOTKEY.to_string(),
+            think_pauses: true,
+            think_max_secs: DEFAULT_THINK_SECS,
         }
     }
 }
@@ -93,13 +111,35 @@ impl TyperSettings {
         self.typo_rate.clamp(0.0, MAX_TYPO)
     }
 
+    /// The longest thinking pause this run may take, inside what still reads as
+    /// a pause rather than a hang.
+    fn think_max(&self) -> f64 {
+        self.think_max_secs.clamp(THINK_MIN_SECS, MAX_THINK_SECS)
+    }
+
+    /// The pause a plan should budget for per word, in seconds: the chance of a
+    /// pause times the middle of its range.
+    fn thinking_per_word(&self) -> f64 {
+        if self.think_pauses {
+            THINK_CHANCE * (THINK_MIN_SECS + self.think_max()) / 2.0
+        } else {
+            0.0
+        }
+    }
+
     /// The pace the run will keep, in keystrokes a second, and whether a
     /// deadline had to be slowed down to reach it.
-    fn cps(&self, chars: u32) -> (f64, bool) {
+    ///
+    /// Thinking comes out of a deadline's time rather than adding to it: a
+    /// deadline promises the last keystroke lands on time, so the keystrokes
+    /// get what the pauses leave.
+    fn cps(&self, chars: u32, words: u32) -> (f64, bool) {
         let resting = (self.wpm.clamp(5.0, 400.0) * CHARS_A_WORD) / 60.0;
         match self.deadline_secs {
             Some(secs) if chars > 0 => {
-                let asked = chars as f64 / secs.max(1) as f64;
+                let thinking = words as f64 * self.thinking_per_word();
+                let typing = (secs.max(1) as f64 - thinking).max(0.5);
+                let asked = chars as f64 / typing;
                 (asked.clamp(0.5, MAX_CPS), asked > MAX_CPS)
             }
             _ => (resting.clamp(0.5, 400.0), false),
@@ -121,6 +161,8 @@ pub struct TyperPlan {
     /// Keystrokes a second, after any deadline.
     pub cps: f64,
     pub total_ms: u64,
+    /// How much of that is the run stopping to think between words.
+    pub thinking_ms: u64,
     /// Whether a deadline asked for a pace faster than the engine will go.
     pub clamped: bool,
 }
@@ -128,17 +170,22 @@ pub struct TyperPlan {
 pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
     let chars = text.chars().count() as u32;
     let words = text.split_whitespace().count() as u32;
-    let (cps, clamped) = settings.cps(chars);
+    let (cps, clamped) = settings.cps(chars, words);
     let char_ms = 1_000.0 / cps;
     // A correction costs three keystrokes and two of its own gaps, so it is
     // worth more time than the character it stands in for.
     let corrections = (chars as f64 * settings.typo()).round();
-    let total_ms = (chars as f64 * char_ms + corrections * (char_ms * 0.9 + 170.0)).round();
+    let thinking_ms = (words as f64 * settings.thinking_per_word() * 1_000.0).round();
+    let total_ms = (chars as f64 * char_ms
+        + corrections * (char_ms * 0.9 + 170.0)
+        + thinking_ms)
+        .round();
     TyperPlan {
         chars,
         words,
         cps,
         total_ms: total_ms.max(0.0) as u64,
+        thinking_ms: thinking_ms.max(0.0) as u64,
         clamped,
     }
 }
@@ -151,6 +198,9 @@ pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
 pub struct Status {
     /// `idle`, `typing`, `paused`, `done`, `stopped` or `unfocused`.
     pub status: String,
+    /// True while the run is stopped between words, thinking about the next
+    /// one. It is not a pause: the person did not ask for it.
+    pub thinking: bool,
     pub typed: u32,
     pub total: u32,
     pub planned_ms: u64,
@@ -220,6 +270,7 @@ pub struct Progress {
     planned_ms: u64,
     timing: Mutex<Timing>,
     paused: AtomicBool,
+    thinking: AtomicBool,
 }
 
 impl Progress {
@@ -231,6 +282,7 @@ impl Progress {
             planned_ms,
             timing: Mutex::new(Timing::waiting()),
             paused: AtomicBool::new(false),
+            thinking: AtomicBool::new(false),
         }
     }
 
@@ -243,6 +295,7 @@ impl Progress {
         }
         Status {
             status,
+            thinking: self.thinking.load(Ordering::Relaxed),
             typed: self.typed.load(Ordering::Relaxed),
             total: self.total,
             planned_ms: self.planned_ms,
@@ -258,9 +311,11 @@ impl Progress {
 
     fn set(&self, status: &str) {
         *self.status.lock().unwrap() = status.to_string();
-        // A finished run keeps the time it took rather than counting on.
+        // A finished run keeps the time it took rather than counting on, and it
+        // is no longer thinking about anything.
         if matches!(status, "done" | "stopped" | "unfocused") {
             self.timing.lock().unwrap().freeze();
+            self.thinking.store(false, Ordering::Relaxed);
         }
     }
 
@@ -270,6 +325,11 @@ impl Progress {
 
     pub fn paused(&self) -> bool {
         self.paused.load(Ordering::Relaxed)
+    }
+
+    /// Say the run has stopped between words to think about the next one.
+    pub fn think(&self, on: bool) {
+        self.thinking.store(on, Ordering::Relaxed);
     }
 
     pub fn pause(&self) -> Status {
@@ -352,6 +412,7 @@ pub fn start(
     let characters: Vec<char> = text.chars().collect();
     let char_ms = 1_000.0 / estimate.cps;
     let typo = settings.typo();
+    let think = settings.think_pauses.then(|| settings.think_max());
     let countdown = settings.countdown_secs.min(30);
     let shared = Arc::clone(runtime);
     // The thread gets its own handle: the error arm below still needs the
@@ -361,7 +422,9 @@ pub fn start(
     std::thread::Builder::new()
         .name("crossup-typer".into())
         .spawn(move || {
-            let outcome = drive(&characters, char_ms, typo, countdown, &stop, &counters);
+            let outcome = drive(
+                &characters, char_ms, typo, think, countdown, &stop, &counters,
+            );
             counters.set(outcome);
             shared.release(0, 0.0);
         })
@@ -381,6 +444,7 @@ fn drive(
     characters: &[char],
     char_ms: f64,
     typo: f64,
+    think: Option<f64>,
     countdown: u32,
     stop: &AtomicBool,
     progress: &Arc<Progress>,
@@ -406,7 +470,13 @@ fn drive(
 
     let mut roll = Roll::seeded();
     let mut checked = Instant::now();
-    for character in characters {
+    // Each word gets its own pace, a shade either side of the asked one, so a
+    // paragraph speeds up and eases off the way a person does.
+    let mut drift = 1.0;
+    for (index, character) in characters.iter().enumerate() {
+        if index == 0 || characters[index - 1].is_whitespace() {
+            drift = drift_for(roll.next());
+        }
         if stop.load(Ordering::Relaxed) {
             return "stopped";
         }
@@ -440,10 +510,28 @@ fn drive(
             other => input::text(&other.to_string()),
         }
         progress.bump();
-        // A little spread either side of the pace: the same gap every time is
-        // the thing that reads as a machine.
-        let jitter = 0.82 + roll.next() * 0.36;
-        if !wait(stop, char_ms * jitter) {
+        // A little spread either side of the word's pace: the same gap every
+        // time is the thing that reads as a machine.
+        let gap = char_ms * drift * (0.9 + roll.next() * 0.2);
+        // Between words the run may stop, as though the next sentence were
+        // being thought about rather than typed. The pause is picked from the
+        // range the settings allow, and Stop still lands inside it.
+        let ends_word = character.is_alphanumeric()
+            && characters
+                .get(index + 1)
+                .map_or(true, |next| next.is_whitespace());
+        if let Some(longest) = think {
+            if ends_word && roll.next() < THINK_CHANCE {
+                let held = THINK_MIN_SECS + roll.next() * (longest - THINK_MIN_SECS);
+                progress.think(true);
+                let alive = wait(stop, held * 1_000.0);
+                progress.think(false);
+                if !alive {
+                    return "stopped";
+                }
+            }
+        }
+        if !wait(stop, gap) {
             return "stopped";
         }
     }
@@ -494,6 +582,12 @@ fn wait(stop: &AtomicBool, ms: f64) -> bool {
         let slice = (deadline - now).as_millis().clamp(1, 15) as u64;
         std::thread::sleep(Duration::from_millis(slice));
     }
+}
+
+/// How far this word's pace sits from the asked one: the middle of the range at
+/// half a roll, the edges at zero and one.
+fn drift_for(roll: f64) -> f64 {
+    1.0 - PACE_DRIFT + roll * PACE_DRIFT * 2.0
 }
 
 /// The wrong character to type for a mistype: a neighbour from the same row of
@@ -594,6 +688,7 @@ mod tests {
         let settings = TyperSettings {
             deadline_secs: Some(20),
             typo_rate: 0.0,
+            think_pauses: false,
             ..TyperSettings::default()
         };
         let estimate = plan(&"a".repeat(100), &settings);
@@ -607,6 +702,7 @@ mod tests {
             &"a".repeat(100),
             &TyperSettings {
                 deadline_secs: Some(1),
+                think_pauses: false,
                 ..TyperSettings::default()
             },
         );
@@ -621,6 +717,7 @@ mod tests {
             &TyperSettings {
                 wpm: 60.0,
                 typo_rate: 0.0,
+                think_pauses: false,
                 ..TyperSettings::default()
             },
         );
@@ -679,6 +776,76 @@ mod tests {
         assert!(while_paused < 0.1, "paused time counted: {while_paused}");
         counters.resume();
         assert!(counters.view().elapsed_secs < 0.1);
+    }
+
+    #[test]
+    fn thinking_is_budgeted_in_the_estimate_and_can_be_switched_off() {
+        let text = "one two three four five six seven eight nine ten";
+        let on = plan(
+            text,
+            &TyperSettings {
+                wpm: 60.0,
+                typo_rate: 0.0,
+                ..TyperSettings::default()
+            },
+        );
+        let off = plan(
+            text,
+            &TyperSettings {
+                wpm: 60.0,
+                typo_rate: 0.0,
+                think_pauses: false,
+                ..TyperSettings::default()
+            },
+        );
+        assert!(on.thinking_ms > 0, "{on:?}");
+        assert_eq!(off.thinking_ms, 0);
+        assert!(on.total_ms > off.total_ms, "a pause costs no time: {on:?}");
+    }
+
+    #[test]
+    fn a_deadline_absorbs_thinking_rather_than_missing_it() {
+        let estimate = plan(
+            "a b c d e f g h i j",
+            &TyperSettings {
+                deadline_secs: Some(20),
+                typo_rate: 0.0,
+                ..TyperSettings::default()
+            },
+        );
+        assert!(estimate.thinking_ms > 0, "{estimate:?}");
+        // The last keystroke still lands on the deadline: the pauses come out
+        // of the time rather than being added after it.
+        assert!(
+            (estimate.total_ms as f64 - 20_000.0).abs() < 60.0,
+            "{estimate:?}"
+        );
+    }
+
+    #[test]
+    fn the_pace_wanders_within_the_drift_and_no_further() {
+        for step in 0..=32 {
+            let drift = drift_for(step as f64 / 32.0);
+            assert!(
+                (1.0 - PACE_DRIFT - 1e-9..=1.0 + PACE_DRIFT + 1e-9).contains(&drift),
+                "{drift}"
+            );
+        }
+        assert!(drift_for(0.0) < drift_for(1.0));
+    }
+
+    #[test]
+    fn a_thinking_pause_never_exceeds_its_setting() {
+        let settings = TyperSettings {
+            think_max_secs: 99.0,
+            ..TyperSettings::default()
+        };
+        assert!((settings.think_max() - MAX_THINK_SECS).abs() < f64::EPSILON);
+        let tiny = TyperSettings {
+            think_max_secs: 0.0,
+            ..TyperSettings::default()
+        };
+        assert!((tiny.think_max() - THINK_MIN_SECS).abs() < f64::EPSILON);
     }
 
     #[test]

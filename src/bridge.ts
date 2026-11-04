@@ -247,6 +247,10 @@ export type TyperSettings = {
   countdownSecs: number;
   /** The start/stop shortcut, in the spelling the other tools use. */
   hotkey: string;
+  /** Whether the run stops between words now and then to think. */
+  thinkPauses: boolean;
+  /** The longest such stop, in seconds. */
+  thinkMaxSecs: number;
 };
 
 export const DEFAULT_TYPER: TyperSettings = {
@@ -256,12 +260,16 @@ export const DEFAULT_TYPER: TyperSettings = {
   deadlineSecs: null,
   countdownSecs: 3,
   hotkey: "",
+  thinkPauses: true,
+  thinkMaxSecs: 2.5,
 };
 
 /** What a run is doing, as the shell reports it. */
 export type TyperStatusView = {
   /** `idle`, `typing`, `paused`, `done`, `stopped` or `unfocused`. */
   status: "idle" | "typing" | "paused" | "done" | "stopped" | "unfocused";
+  /** The run is stopped between words, thinking about the next one. */
+  thinking: boolean;
   typed: number;
   total: number;
   plannedMs: number;
@@ -275,6 +283,8 @@ export type TyperPlan = {
   /** Keystrokes a second, after any deadline. */
   cps: number;
   totalMs: number;
+  /** How much of that is the run stopping to think between words. */
+  thinkingMs: number;
   /** A deadline asked for a faster pace than the engine will keep. */
   clamped: boolean;
 };
@@ -895,6 +905,7 @@ const MAX_TYPER_CPS = 25;
 
 let mockTyper: TyperStatusView = {
   status: "idle",
+  thinking: false,
   typed: 0,
   total: 0,
   plannedMs: 0,
@@ -911,15 +922,24 @@ function mockPlan(text: string, settings: TyperSettings): TyperPlan {
   const chars = Array.from(text).length;
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const resting = (Math.min(400, Math.max(5, settings.wpm)) * 5) / 60;
-  const asked = settings.deadlineSecs ? chars / Math.max(1, settings.deadlineSecs) : resting;
+  const longest = Math.min(8, Math.max(0.35, settings.thinkMaxSecs));
+  const perWord = settings.thinkPauses ? (0.08 * (0.35 + longest)) / 2 : 0;
+  const thinking = words * perWord;
+  // Thinking comes out of a deadline rather than pushing the last keystroke
+  // past it, exactly as the Rust planner does it.
+  const asked = settings.deadlineSecs
+    ? chars / Math.max(0.5, Math.max(1, settings.deadlineSecs) - thinking)
+    : resting;
   const cps = Math.max(0.5, Math.min(MAX_TYPER_CPS, asked));
   const charMs = 1_000 / cps;
   const corrections = Math.round(chars * Math.min(0.25, Math.max(0, settings.typoRate)));
+  const thinkingMs = Math.round(thinking * 1_000);
   return {
     chars,
     words,
     cps,
-    totalMs: Math.round(chars * charMs + corrections * (charMs * 0.9 + 170)),
+    totalMs: Math.round(chars * charMs + corrections * (charMs * 0.9 + 170) + thinkingMs),
+    thinkingMs,
     clamped: asked > MAX_TYPER_CPS,
   };
 }
@@ -934,6 +954,7 @@ function mockStartTyper() {
   typerStartedAt = Date.now();
   mockTyper = {
     status: "typing",
+    thinking: false,
     typed: 0,
     total: estimate.chars,
     plannedMs: estimate.totalMs,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Settings } from "lucide-react";
+import { Power, Settings } from "lucide-react";
 import { PressDepth } from "@/components/interior/press-depth";
 import { Tabs } from "@/components/interior/tabs";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
@@ -31,6 +31,21 @@ const TOOLS = [
   { value: "macros", label: "Macros" },
   { value: "replay", label: "Replayer" },
 ];
+
+/**
+ * The mark beside a tab's name: the tool's own switch, read without opening the
+ * tab. A solid power glyph is a tool that is on; a faded outline is one that is
+ * off, so the strip answers "what is working?" at a glance.
+ */
+function ToolMark({ on }: { on: boolean }) {
+  return (
+    <Power
+      size={11}
+      strokeWidth={on ? 2.4 : 1.6}
+      className={`hb__tab-mark${on ? "" : " hb__tab-mark--off"}`}
+    />
+  );
+}
 
 export function App() {
   return (
@@ -203,6 +218,20 @@ function Shell() {
     !view.macros_enabled && "macros",
     !view.replay_enabled && "replayer",
   ].filter((name): name is string => Boolean(name));
+  // The same switches, in the order the strip draws them. A tool that is off is
+  // still a tab you can open — the mark is a status, not a lock.
+  const toolOn: Record<string, boolean> = {
+    remapper: view.hook_enabled,
+    clicker: view.clicker_enabled,
+    typer: view.typer_enabled,
+    macros: view.macros_enabled,
+    replay: view.replay_enabled,
+  };
+  const tabs = TOOLS.map((tool) => ({
+    ...tool,
+    indicator: <ToolMark on={toolOn[tool.value]} />,
+    indicatorLabel: toolOn[tool.value] ? "on" : "off",
+  }));
 
   return (
     <div className="hb hb--shell">
@@ -293,7 +322,7 @@ function Shell() {
       )}
 
       <Tabs
-        items={TOOLS}
+        items={tabs}
         value={tab}
         onValueChange={setTab}
         label="Tools"
