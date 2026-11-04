@@ -336,11 +336,6 @@ export function AutoClickerTab({
           />
         </div>
 
-        {activity?.hotkeyErrors.map((message) => (
-          <p className="hb__warn" key={message}>
-            {message}
-          </p>
-        ))}
         {tooFast && (
           <p className="hb__warn">
             {cps.toFixed(0)} clicks a second is past the point Windows can pace;

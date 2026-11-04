@@ -439,12 +439,6 @@ export function MacrosTab({
               </datalist>
             </Card>
 
-            {activity?.hotkeyErrors.map((message) => (
-              <p className="hb__warn" key={message}>
-                {message}
-              </p>
-            ))}
-
             <BlockBuilder
               keys={view.keys}
               steps={draft.steps}

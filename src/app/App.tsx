@@ -264,6 +264,16 @@ function Shell() {
           the rest of the run. */}
       <UpdateBanner />
 
+      {/* A shortcut the engine could not take is the difference between a key
+          that does nothing and a key somebody can fix. Each tab used to print
+          its own copy in one corner, so a refused typer or replayer shortcut was
+          invisible on the tab that set it. */}
+      {activity?.hotkeyErrors.map((message) => (
+        <p className="hb__warn" key={message} role="status">
+          {message}
+        </p>
+      ))}
+
       <Tabs
         items={TOOLS}
         value={tab}

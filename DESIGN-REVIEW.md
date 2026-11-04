@@ -270,6 +270,42 @@ Verified by hit-testing rather than by eye: at a 900px window scrolled to 420,
 at 191, a gap of zero, and `elementFromPoint` two pixels into the first chip row
 returns `.pal` rather than the header. All eight chips respond.
 
+## Round seven, shipped in 0.2.6
+
+Three faults, all of them read off the running app rather than guessed at.
+
+**The typer's clock never belonged to the run.** It reported 124.4 seconds of
+"elapsed" on a window that had been open two minutes and had never typed
+anything. The clock was one `Instant` taken when the counters were made, so it
+measured how long the app had been open, kept counting after a run ended, and had
+nothing to restart when Start was pressed. It now starts on the first keystroke,
+stops at zero through the countdown, leaves paused time out, and freezes where a
+run ends: measured on the packaged build, `elapsedSecs` reads 0 and still reads 0
+five seconds later, and two tests pin the behaviour.
+
+**The replayer's shortcuts were never saved.** The tab called
+`save_replay_options` with `record_hotkey` and `replay_hotkey`; Tauri
+deserialises command arguments as camelCase, so the call was rejected before it
+reached the handler — measured on the running app, the snake_case call answers
+`invalid args 'recordHotkey' for command 'save_replay_options': missing required
+key`. Nothing was stored, so nothing was registered, so neither key did
+anything. With the arguments spelled the way the command takes them, recording
+them through the tab stores `Control+Alt+R` and `Control+Alt+P`, both read back
+from the engine.
+
+**The typer accepted a shortcut it cannot use.** Its field had recorded `Mouse5`
+and Rust refused it — correctly, since a mouse button cannot type — but the
+refusal was printed on the Clicker and Macro tabs only. The typer's recorder is
+now keyboard-only, so it cannot save what the engine will reject, and every
+refused shortcut is printed once above the tabs, on the tab where it was set.
+
+The typer also resolved its target window when the run started, which is Crossup
+itself, so the first focus check read the window the text was meant for as a
+change of window and stood the run down before a keystroke. It resolves the
+target when the countdown ends instead; pressing the global chord into the app
+now answers `unfocused` with the clock at 0 rather than typing nowhere for three
+seconds.
+
 ## What I could not check
 
 - The contrast numbers are one preset. Ten presets share the same derivation, but

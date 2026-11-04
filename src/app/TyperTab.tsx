@@ -26,7 +26,7 @@ const LABELS: Record<TyperStatusView["status"], string> = {
   paused: "Paused",
   done: "Finished",
   stopped: "Stopped",
-  unfocused: "Stopped: the window changed",
+  unfocused: "Stopped: the wrong window was in front",
 };
 
 /** A pace written the way the clicker writes one: per second, and the gap. */
@@ -188,6 +188,7 @@ export function TyperTab({
             onChange={(enabled) => run("set_tool_enabled", { tool: "typer", enabled })}
           />
           <HotkeyField
+            keyboardOnly
             label="Start shortcut"
             note="Starts the draft, or stops a run that is going. This one is keyboard only, because a mouse button cannot type."
             value={draft.hotkey}
@@ -197,8 +198,9 @@ export function TyperTab({
 
         {status?.status === "unfocused" && (
           <p className="hb__warn">
-            The window in front changed while the typer was running, so it stopped
-            instead of typing the rest into another window.
+            The window in front was not the one the run started in — or Crossup itself
+            was still in front when the countdown ended — so nothing was typed. Press
+            Start, then click into the window that should receive the text.
           </p>
         )}
 
@@ -357,7 +359,7 @@ export function TyperTab({
                 : status?.status === "done"
                   ? "The whole draft is out."
                   : status?.status === "unfocused"
-                    ? "Stopped because another window came forward."
+                    ? "Stopped because the window in front was not the one the text was meant for."
                     : status?.status === "paused"
                       ? "Paused. Nothing is typed until you resume."
                       : "Nothing has run yet."}

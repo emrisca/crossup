@@ -1129,8 +1129,8 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
         ...mock,
         replay: {
           ...mock.replay,
-          recordHotkey: String(args?.record_hotkey ?? ""),
-          replayHotkey: String(args?.replay_hotkey ?? ""),
+          recordHotkey: String(args?.recordHotkey ?? ""),
+          replayHotkey: String(args?.replayHotkey ?? ""),
           repeat: (args?.repeat ?? null) as number | null,
         },
       };

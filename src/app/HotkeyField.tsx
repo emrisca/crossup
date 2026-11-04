@@ -148,11 +148,16 @@ export function HotkeyField({
   note,
   value,
   onChange,
+  keyboardOnly = false,
 }: {
   label: string;
   note?: string;
   value: string;
   onChange: (value: string) => void;
+  /** For the shortcuts that can only be a key combination, such as the typer's:
+   * a mouse button is not refused with a message here, it is simply not
+   * recorded, so the field can never hold a shortcut the engine will reject. */
+  keyboardOnly?: boolean;
 }) {
   const [listening, setListening] = useState(false);
   const [held, setHeld] = useState<string[]>([]);
@@ -200,6 +205,7 @@ export function HotkeyField({
     const onMouseDown = (event: MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      if (keyboardOnly) return;
       const accelerator = acceleratorForMouse(event);
       if (!accelerator) return;
       onChange(accelerator);
@@ -217,6 +223,7 @@ export function HotkeyField({
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      if (keyboardOnly) return;
       const accelerator = acceleratorForWheel(event);
       if (!accelerator) return;
       onChange(accelerator);
@@ -235,12 +242,15 @@ export function HotkeyField({
       window.removeEventListener("contextmenu", onContextMenu, true);
       window.removeEventListener("wheel", onWheel, { capture: true });
     };
-  }, [listening, onChange]);
+  }, [listening, onChange, keyboardOnly]);
 
+  const prompt = keyboardOnly
+    ? "press a key combination…"
+    : "press a key, a mouse button, or roll the wheel…";
   const shown = listening
     ? held.length > 0
       ? `${held.join(" + ")} + …`
-      : "press a key, a mouse button, or roll the wheel…"
+      : prompt
     : formatShortcut(value) || "not set";
 
   return (

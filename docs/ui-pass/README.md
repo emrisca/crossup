@@ -100,6 +100,24 @@ the selection that went with it, so a recording returns to its place and stays
 selected. The window never holds a recording's events, which is why the restore
 lives in Rust rather than in the tab.
 
+## Round seven: the typer and replayer shortcuts
+
+No pictures this round: the evidence is what the engine answers, read from the
+packaged build over its own DevTools port.
+
+| What was measured | Before | After |
+| --- | --- | --- |
+| `typer_status.elapsedSecs`, nothing ever run | 124.4 (window uptime) | 0, and 0 again five seconds later |
+| `save_replay_options` with snake_case keys | `missing required key 'recordHotkey'` | — |
+| `save_replay_options` with camelCase keys | — | stores `Control+Alt+R` / `Control+Alt+P` |
+| Typer shortcut recorded on its tab | `Mouse5`, refused by the engine | `Control+Alt+T`, registered, no errors |
+| Global typer chord, Crossup in front | typed 0, no visible change | `unfocused`, clock 0, warning on screen |
+
+The typer's clock now starts on the first keystroke, excludes paused time and
+freezes where a run ends; the replayer's shortcuts are saved under the names the
+command actually takes; the typer's recorder is keyboard-only; and a shortcut the
+engine refuses is printed above the tabs on every tab, not on two of them.
+
 ## Round six: the block palette stays whole
 
 ![Packaged window, macro builder scrolled with the palette pinned](packaged-palette.png)

@@ -95,9 +95,12 @@ export function ReplayerTab({
     replayHotkey?: string;
     repeat?: number | null;
   }) => {
+    // Command arguments arrive as camelCase: `save_replay_options` takes
+    // `recordHotkey`, and sending `record_hotkey` was refused as a missing key,
+    // which is why neither shortcut ever registered.
     void run("save_replay_options", {
-      record_hotkey: patch.recordHotkey ?? options.recordHotkey,
-      replay_hotkey: patch.replayHotkey ?? options.replayHotkey,
+      recordHotkey: patch.recordHotkey ?? options.recordHotkey,
+      replayHotkey: patch.replayHotkey ?? options.replayHotkey,
       repeat: patch.repeat === undefined ? options.repeat : patch.repeat,
     });
   };

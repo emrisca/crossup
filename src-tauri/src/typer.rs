@@ -154,13 +154,67 @@ pub struct Status {
 }
 
 /// The counters a run keeps, shared by the driver thread and the commands.
+/// The clock a run keeps.
+///
+/// It counts only while the run is typing. It used to be one `Instant` taken
+/// when the counters were made, which is why a window left open for a while
+/// showed that time on a tab where nothing had ever run, why pressing Start did
+/// not begin it at zero, and why a finished run kept counting after it ended.
+struct Timing {
+    started: Instant,
+    paused_for: Duration,
+    paused_at: Option<Instant>,
+    /// Set when the run ends, so the number stays where the run stopped.
+    ended: Option<f64>,
+}
+
+impl Timing {
+    /// Waiting at zero: no run yet, or the countdown before the first keystroke.
+    fn waiting() -> Self {
+        Self {
+            started: Instant::now(),
+            paused_for: Duration::ZERO,
+            paused_at: None,
+            ended: Some(0.0),
+        }
+    }
+
+    /// Counting, from now.
+    fn running() -> Self {
+        Self {
+            started: Instant::now(),
+            paused_for: Duration::ZERO,
+            paused_at: None,
+            ended: None,
+        }
+    }
+
+    fn elapsed(&self) -> f64 {
+        if let Some(fixed) = self.ended {
+            return fixed;
+        }
+        let mut spent = self.started.elapsed().saturating_sub(self.paused_for);
+        if let Some(at) = self.paused_at {
+            spent = spent.saturating_sub(at.elapsed());
+        }
+        spent.as_secs_f64().max(0.0)
+    }
+
+    /// Stop the clock where it is, keeping the reading.
+    fn freeze(&mut self) {
+        if self.ended.is_none() {
+            self.ended = Some(self.elapsed());
+        }
+    }
+}
+
 pub struct Progress {
     status: Mutex<String>,
     typed: AtomicU32,
     /// Fixed for the length of a run, so they need no lock.
     total: u32,
     planned_ms: u64,
-    started: Instant,
+    timing: Mutex<Timing>,
     paused: AtomicBool,
 }
 
@@ -171,7 +225,7 @@ impl Progress {
             typed: AtomicU32::new(0),
             total,
             planned_ms,
-            started: Instant::now(),
+            timing: Mutex::new(Timing::waiting()),
             paused: AtomicBool::new(false),
         }
     }
@@ -188,12 +242,22 @@ impl Progress {
             typed: self.typed.load(Ordering::Relaxed),
             total: self.total,
             planned_ms: self.planned_ms,
-            elapsed_secs: self.started.elapsed().as_secs_f64(),
+            elapsed_secs: self.timing.lock().unwrap().elapsed(),
         }
+    }
+
+    /// The first keystroke is about to go: the clock starts here, not when the
+    /// window opened and not when the countdown began.
+    pub fn begin_typing(&self) {
+        *self.timing.lock().unwrap() = Timing::running();
     }
 
     fn set(&self, status: &str) {
         *self.status.lock().unwrap() = status.to_string();
+        // A finished run keeps the time it took rather than counting on.
+        if matches!(status, "done" | "stopped" | "unfocused") {
+            self.timing.lock().unwrap().freeze();
+        }
     }
 
     fn bump(&self) {
@@ -207,11 +271,16 @@ impl Progress {
     pub fn pause(&self) -> Status {
         if self.view().status == "typing" {
             self.paused.store(true, Ordering::Relaxed);
+            self.timing.lock().unwrap().paused_at = Some(Instant::now());
         }
         self.view()
     }
 
     pub fn resume(&self) -> Status {
+        let held = self.timing.lock().unwrap().paused_at.take();
+        if let Some(at) = held {
+            self.timing.lock().unwrap().paused_for += at.elapsed();
+        }
         self.paused.store(false, Ordering::Relaxed);
         self.view()
     }
@@ -280,8 +349,6 @@ pub fn start(
     let char_ms = 1_000.0 / estimate.cps;
     let typo = settings.typo();
     let countdown = settings.countdown_secs.min(30);
-    // The window in front right now is the one this run types into.
-    let target = crate::hook::foreground_program();
     let shared = Arc::clone(runtime);
     // The thread gets its own handle: the error arm below still needs the
     // holder's copy to say the run never started.
@@ -290,15 +357,7 @@ pub fn start(
     std::thread::Builder::new()
         .name("crossup-typer".into())
         .spawn(move || {
-            let outcome = drive(
-                &characters,
-                char_ms,
-                typo,
-                countdown,
-                &target,
-                &stop,
-                &counters,
-            );
+            let outcome = drive(&characters, char_ms, typo, countdown, &stop, &counters);
             counters.set(outcome);
             shared.release(0, 0.0);
         })
@@ -319,7 +378,6 @@ fn drive(
     char_ms: f64,
     typo: f64,
     countdown: u32,
-    target: &str,
     stop: &AtomicBool,
     progress: &Arc<Progress>,
 ) -> &'static str {
@@ -330,9 +388,17 @@ fn drive(
             return "stopped";
         }
     }
-    if !focused(target, &mut Instant::now()) {
+    // The window in front when the countdown ends is the one this run types
+    // into. Taking it when the run started named Crossup itself, because that is
+    // where Start and the shortcut are pressed, so the first focus check read the
+    // window the text was meant for as a change of window and stood the run down
+    // before a single keystroke. Crossup itself is still the wrong window: typing
+    // into this app is never what anybody meant.
+    let target = crate::hook::foreground_program();
+    if target.is_empty() || target.eq_ignore_ascii_case(&own_program()) {
         return "unfocused";
     }
+    progress.begin_typing();
 
     let mut roll = Roll::seeded();
     let mut checked = Instant::now();
@@ -347,7 +413,7 @@ fn drive(
                 return "stopped";
             }
         }
-        if !focused(target, &mut checked) {
+        if !focused(&target, &mut checked) {
             return "unfocused";
         }
         // A mistype is a wrong character, a pause while it is noticed, and a
@@ -393,6 +459,15 @@ fn focused(target: &str, last: &mut Instant) -> bool {
     *last = Instant::now();
     let front = crate::hook::foreground_program();
     front.is_empty() || front.eq_ignore_ascii_case(target)
+}
+
+/// The name of the program this module is part of, to tell "the window the text
+/// is meant for" from "the window the button was pressed in".
+fn own_program() -> String {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+        .unwrap_or_default()
 }
 
 fn tap(scan: u16) {
@@ -566,6 +641,40 @@ mod tests {
             }
         }
         assert!(plan("x", &settings).chars == 1);
+    }
+
+    #[test]
+    fn the_clock_only_counts_while_a_run_is_typing() {
+        let counters = Progress::new("idle", 10, 0);
+        std::thread::sleep(Duration::from_millis(40));
+        assert_eq!(counters.view().elapsed_secs, 0.0, "an idle tab kept counting");
+
+        counters.begin_typing();
+        std::thread::sleep(Duration::from_millis(40));
+        let typing = counters.view().elapsed_secs;
+        assert!(typing >= 0.02, "the clock did not start with the run: {typing}");
+
+        counters.set("done");
+        let finished = counters.view().elapsed_secs;
+        std::thread::sleep(Duration::from_millis(60));
+        assert_eq!(
+            counters.view().elapsed_secs,
+            finished,
+            "the clock kept running after the run ended"
+        );
+    }
+
+    #[test]
+    fn a_pause_is_not_counted_as_typing_time() {
+        let counters = Progress::new("typing", 10, 0);
+        counters.begin_typing();
+        std::thread::sleep(Duration::from_millis(20));
+        counters.pause();
+        std::thread::sleep(Duration::from_millis(120));
+        let while_paused = counters.view().elapsed_secs;
+        assert!(while_paused < 0.1, "paused time counted: {while_paused}");
+        counters.resume();
+        assert!(counters.view().elapsed_secs < 0.1);
     }
 
     #[test]
