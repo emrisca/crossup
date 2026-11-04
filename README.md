@@ -252,6 +252,10 @@ ever be offered.
   usually one letter, sometimes two or three, each a neighbour on the keyboard;
   then a pause while it is noticed, a backspace for each, a breath, and the
   right letters again.
+- **Fix it later.** Off, a mistake is corrected where it is made. On, it stands
+  while the run types on, and one to three sentences later the run goes back
+  over what it wrote, erases to the mistake and types that stretch again. The
+  run is longer for it, and the plan above says how much.
 - **Thinking pauses.** Stops between words, each up to the longest set. They
   land after a sentence's full stop, and inside a sentence that runs on, after a
   random fifteen to thirty words counted from the last pause. The estimate

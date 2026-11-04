@@ -303,6 +303,18 @@ export function TyperTab({
             </Line>
 
             <Line
+              label="Fix it later"
+              note="Leave a mistake standing and come back for it after one to three sentences, the way a person notices what they wrote a line ago. The run erases back to the mistake and types that stretch again, so the plan above gets longer. Off, a mistake is corrected where it is made."
+            >
+              <Switch
+                checked={draft.typoDefer}
+                label="Fix mistakes a few sentences later"
+                disabled={running || draft.typoRate === 0}
+                onChange={(typoDefer) => update({ typoDefer })}
+              />
+            </Line>
+
+            <Line
               label="Thinking pauses"
               note="Whether the run stops between words at all. Each pause is picked at random up to this length, and it counts towards the run's time."
             >
@@ -481,6 +493,7 @@ export function TyperTab({
             update({
               wpm: 65,
               typoRate: 0.04,
+              typoDefer: false,
               deadlineSecs: null,
               countdownSecs: 3,
               thinkPauses: true,

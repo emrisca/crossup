@@ -255,6 +255,8 @@ export type TyperSettings = {
   thinkAfterSentence: boolean;
   /** Whether a run also stops inside a long sentence, after 15 to 30 words. */
   thinkInLongSentence: boolean;
+  /** Whether a mistake is left standing and fixed a sentence or three later. */
+  typoDefer: boolean;
   /** How far each word's pace may wander, as a share either side. */
   paceVariation: number;
 };
@@ -270,6 +272,7 @@ export const DEFAULT_TYPER: TyperSettings = {
   thinkMaxSecs: 2.5,
   thinkAfterSentence: true,
   thinkInLongSentence: true,
+  typoDefer: false,
   paceVariation: 0.2,
 };
 
@@ -952,11 +955,20 @@ function mockPlan(text: string, settings: TyperSettings): TyperPlan {
   const charMs = 1_000 / cps;
   const corrections = Math.round(chars * Math.min(0.25, Math.max(0, settings.typoRate)));
   const thinkingMs = Math.round(thinking * 1_000);
+  // A mistake left for later comes off and goes back on, so it costs the text
+  // between it and the sentence that noticed it, two sentences' worth on the
+  // average of the one-to-three window.
+  const retyped = settings.typoDefer
+    ? Math.min(chars, (2 * chars) / Math.max(1, sentences))
+    : 0;
+  const correctionsMs = settings.typoDefer
+    ? corrections * (retyped * charMs * 1.45 + 560)
+    : corrections * (charMs * 4.5 + 235);
   return {
     chars,
     words,
     cps,
-    totalMs: Math.round(chars * charMs + corrections * (charMs * 4.5 + 235) + thinkingMs),
+    totalMs: Math.round(chars * charMs + correctionsMs + thinkingMs),
     thinkingMs,
     clamped: asked > MAX_TYPER_CPS,
   };

@@ -96,6 +96,9 @@ pub struct TyperSettings {
     /// Whether a run also stops inside a sentence that runs on, after a random
     /// fifteen to thirty words.
     pub think_in_long_sentence: bool,
+    /// Whether a mistake is left standing and gone back for after a sentence or
+    /// three, instead of being erased where it is made.
+    pub typo_defer: bool,
     /// How far each word's pace may sit from the one on the slider, as a share
     /// either side. Zero is a metronome; a fifth is a person losing the rhythm
     /// and finding it again, and a half is the ceiling the engine allows.
@@ -115,6 +118,7 @@ impl Default for TyperSettings {
             think_max_secs: DEFAULT_THINK_SECS,
             think_after_sentence: true,
             think_in_long_sentence: true,
+            typo_defer: false,
             pace_variation: DEFAULT_PACE_DRIFT,
         }
     }
@@ -233,13 +237,25 @@ pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
     // worth more time than the character it stands in for.
     let corrections = (chars as f64 * settings.typo()).round();
     let thinking_ms = (settings.thinking_secs(words, sentences) * 1_000.0).round();
-    // A mistype costs the wrong letters, the beat where it is noticed, the
-    // backspaces and the breath before the retype — about four and a half key
-    // gaps, measured against the driver's own waits.
-    let total_ms = (chars as f64 * char_ms
-        + corrections * (char_ms * 4.5 + 235.0)
-        + thinking_ms)
-        .round();
+    // A mistake fixed where it is made costs the wrong letters, the beat where
+    // it is noticed, the backspaces and the breath before the retype — about
+    // four and a half key gaps, measured against the driver's own waits.
+    //
+    // A mistake left for later costs what it always costs a person: everything
+    // written since has to come off and go back on. Two sentences is the middle
+    // of the one-to-three window the run waits, and a backspace runs at a little
+    // under half a key gap.
+    let retyped = if settings.typo_defer {
+        (2.0 * chars as f64 / sentences.max(1) as f64).min(chars as f64)
+    } else {
+        0.0
+    };
+    let corrections_ms = if settings.typo_defer {
+        corrections * (retyped * char_ms * 1.45 + 560.0)
+    } else {
+        corrections * (char_ms * 4.5 + 235.0)
+    };
+    let total_ms = (chars as f64 * char_ms + corrections_ms + thinking_ms).round();
     TyperPlan {
         chars,
         words,
@@ -482,6 +498,7 @@ pub fn start(
     };
     let after_sentence = settings.think_after_sentence;
     let long_sentence = settings.think_in_long_sentence;
+    let defer = settings.typo_defer;
     let countdown = settings.countdown_secs.min(30);
     let shared = Arc::clone(runtime);
     // The thread gets its own handle: the error arm below still needs the
@@ -496,6 +513,7 @@ pub fn start(
                 char_ms,
                 pace,
                 typo,
+                defer,
                 think,
                 after_sentence,
                 long_sentence,
@@ -523,6 +541,7 @@ fn drive(
     char_ms: f64,
     pace: f64,
     typo: f64,
+    defer: bool,
     think: Option<f64>,
     after_sentence: bool,
     long_sentence: bool,
@@ -558,6 +577,9 @@ fn drive(
     // Words typed since the last pause, and how many the next one waits for.
     let mut words_since_pause = 0u32;
     let mut next_gap = long_sentence_gap(&mut roll);
+    // The mistake the run left standing and means to come back for: where it
+    // sits in the draft, and how many sentence ends are still to pass first.
+    let mut deferred: Option<(usize, u32)> = None;
     for (index, character) in characters.iter().enumerate() {
         if index == 0 || characters[index - 1].is_whitespace() {
             drift = drift_for(roll.next(), pace);
@@ -575,43 +597,73 @@ fn drive(
         if !focused(&target, &mut checked) {
             return "unfocused";
         }
-        // A mistype is a wrong letter or a short run of them, typed at the pace
-        // the rest of the word is going at, then noticed — a beat longer than a
-        // key gap — and erased one backspace at a time before the right letters
-        // go out again. One key swapped for another in an instant reads as a
-        // machine; a burst reads as a hand that got ahead of an eye.
+        // A mistake left for later is typed and walked away from. Once the
+        // sentences it waits for have ended, the run goes back: everything
+        // written since comes off, the wrong letter with it, and the stretch is
+        // typed again.
+        if let Some((at, 0)) = deferred {
+            if !go_back(characters, at, index, char_ms, drift, &mut roll, stop) {
+                return "stopped";
+            }
+            deferred = None;
+        }
+        // A mistype fixed where it is made is a wrong letter or a short run of
+        // them, typed at the pace the rest of the word is going at, then noticed
+        // — a beat longer than a key gap — and erased one backspace at a time
+        // before the right letters go out again. One key swapped for another in
+        // an instant reads as a machine; a burst reads as a hand ahead of an eye.
+        let mut sent = false;
         if character.is_alphanumeric() && roll.next() < typo {
-            let burst = typo_burst(characters, index, roll.next());
-            for step in 0..burst {
-                let wrong = wrong_for(characters[index + step], roll.next());
+            if defer && deferred.is_none() {
+                let wrong = wrong_for(*character, roll.next());
                 input::text(&wrong.to_string());
-                if !wait(stop, char_ms * (0.85 + roll.next() * 0.45) * drift) {
+                // One to three sentence ends from here before the run returns.
+                deferred = Some((index, 1 + ((roll.next() * 3.0) as u32).min(2)));
+                sent = true;
+            } else {
+                let burst = typo_burst(characters, index, roll.next());
+                for step in 0..burst {
+                    let wrong = wrong_for(characters[index + step], roll.next());
+                    input::text(&wrong.to_string());
+                    if !wait(stop, char_ms * (0.85 + roll.next() * 0.45) * drift) {
+                        return "stopped";
+                    }
+                }
+                // The pause where the mistake registers.
+                if !wait(stop, char_ms * (0.8 + roll.next() * 1.2)) {
                     return "stopped";
                 }
-            }
-            // The pause where the mistake registers.
-            if !wait(stop, char_ms * (0.8 + roll.next() * 1.2)) {
-                return "stopped";
-            }
-            for _ in 0..burst {
-                tap(BACKSPACE);
-                if !wait(stop, char_ms * (0.6 + roll.next() * 0.8)) {
+                for _ in 0..burst {
+                    tap(BACKSPACE);
+                    if !wait(stop, char_ms * (0.6 + roll.next() * 0.8)) {
+                        return "stopped";
+                    }
+                }
+                // A breath before the retype, so the correction is not one blur.
+                if !wait(stop, 150.0 + roll.next() * 170.0) {
                     return "stopped";
                 }
-            }
-            // A breath before the retype, so the correction is not one blur.
-            if !wait(stop, 150.0 + roll.next() * 170.0) {
-                return "stopped";
             }
         }
-        match character {
-            '\n' => tap(ENTER),
-            '\t' => tap(TAB),
-            other => input::text(&other.to_string()),
+        if !sent {
+            match character {
+                '\n' => tap(ENTER),
+                '\t' => tap(TAB),
+                other => input::text(&other.to_string()),
+            }
         }
         progress.bump();
         // A little spread either side of the word's pace, scaled by the same
         // fluctuation: the same gap every time is what reads as a machine.
+        // A sentence end brings a deferred mistake one step closer; a decimal
+        // point does not, the same rule the planner counts sentences by.
+        if matches!(character, '.' | '!' | '?')
+            && characters.get(index + 1).map_or(true, |next| next.is_whitespace())
+        {
+            if let Some((_, left)) = deferred.as_mut() {
+                *left = left.saturating_sub(1);
+            }
+        }
         let gap = char_ms * drift * (1.0 - pace + roll.next() * pace * 2.0);
         if !wait(stop, gap) {
             return "stopped";
@@ -638,6 +690,13 @@ fn drive(
                     }
                 }
             }
+        }
+    }
+    // The draft ran out before the sentences that would have taken the run back
+    // to its last mistake, so it goes back now rather than leaving the text wrong.
+    if let Some((at, _)) = deferred {
+        if !go_back(characters, at, characters.len(), char_ms, drift, &mut roll, stop) {
+            return "stopped";
         }
     }
     "done"
@@ -709,6 +768,43 @@ fn long_sentence_gap_mid() -> f64 {
 fn long_sentence_gap(roll: &mut Roll) -> u32 {
     let span = LONG_SENTENCE_MAX_WORDS - LONG_SENTENCE_MIN_WORDS + 1;
     LONG_SENTENCE_MIN_WORDS + ((roll.next() * span as f64) as u32).min(span - 1)
+}
+
+/// Erase back to a mistake and type that stretch again.
+///
+/// This is what a person does when the error is a sentence behind them: the
+/// backspaces run through everything written since, a beat passes while it is
+/// read again, and then the right text goes out at the pace the run has been
+/// keeping. Returns false when the run was stopped.
+fn go_back(
+    characters: &[char],
+    at: usize,
+    typed: usize,
+    char_ms: f64,
+    drift: f64,
+    roll: &mut Roll,
+    stop: &AtomicBool,
+) -> bool {
+    for _ in at..typed {
+        tap(BACKSPACE);
+        if !wait(stop, char_ms * (0.45 + roll.next() * 0.3)) {
+            return false;
+        }
+    }
+    if !wait(stop, 320.0 + roll.next() * 280.0) {
+        return false;
+    }
+    for character in &characters[at..typed] {
+        match character {
+            '\n' => tap(ENTER),
+            '\t' => tap(TAB),
+            other => input::text(&other.to_string()),
+        }
+        if !wait(stop, char_ms * (0.9 + roll.next() * 0.3) * drift) {
+            return false;
+        }
+    }
+    true
 }
 
 /// How many characters a mistype takes with it: usually one, sometimes two or
@@ -882,6 +978,33 @@ mod tests {
             }
         }
         assert!(plan("x", &settings).chars == 1);
+    }
+
+    #[test]
+    fn a_mistake_left_for_later_costs_the_stretch_it_walks_back_over() {
+        let text = "One sentence that runs on for a while here. Another follows it for good measure.";
+        let immediate = plan(
+            text,
+            &TyperSettings {
+                typo_rate: 0.1,
+                ..TyperSettings::default()
+            },
+        );
+        let deferred = plan(
+            text,
+            &TyperSettings {
+                typo_rate: 0.1,
+                typo_defer: true,
+                ..TyperSettings::default()
+            },
+        );
+        // The same run, longer for what it has to type twice.
+        assert_eq!(deferred.chars, immediate.chars);
+        assert_eq!(deferred.thinking_ms, immediate.thinking_ms);
+        assert!(
+            deferred.total_ms > immediate.total_ms,
+            "{deferred:?} vs {immediate:?}"
+        );
     }
 
     #[test]
