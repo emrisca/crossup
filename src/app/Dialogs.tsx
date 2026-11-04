@@ -86,7 +86,7 @@ export function SettingsDialog({
           <span style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <span className="hb__row-name">Close to tray</span>
             <span className="hb__row-note">
-              Closing the window keeps the hook running in the tray
+              Closing the window leaves the hook running in the tray
             </span>
           </span>
           <Switch
@@ -102,7 +102,7 @@ export function SettingsDialog({
           <span style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <span className="hb__row-name">Debug logging</span>
             <span className="hb__row-note">
-              Record key decisions and profile switches in the footer log
+              Writes key decisions and profile switches to the footer log
             </span>
           </span>
           <Switch
@@ -118,8 +118,8 @@ export function SettingsDialog({
           <span style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <span className="hb__row-name">Launch at sign in</span>
             <span className="hb__row-note">
-              Starts with Windows, from the same entry Task Manager&rsquo;s Startup
-              tab shows
+              Starts with Windows, using the entry on Task Manager&rsquo;s Startup
+              tab.
             </span>
           </span>
           <Switch
@@ -144,7 +144,7 @@ export function SettingsDialog({
             )}
             {!wrongTarget && autostart.exe !== autostart.running && (
               <span className="hb__row-note" style={{ margin: 0 }}>
-                That is not the copy running now
+                This is not the copy that is running
               </span>
             )}
           </span>
@@ -168,7 +168,7 @@ export function SettingsDialog({
           <span style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <span className="hb__row-name">Backup and restore</span>
             <span className="hb__row-note">
-              Copy every setting out as settings.json, or put a copy back
+              Copies every setting out as settings.json, or restores a copy
             </span>
           </span>
           <ArrowDownUp size={13} strokeWidth={1.7} aria-hidden="true" />
@@ -244,7 +244,7 @@ function Updates() {
   const version = state?.currentVersion ? `Crossup ${state.currentVersion}` : "Crossup";
 
   const note = !native
-    ? "Updates install from the desktop app, not a browser preview."
+    ? "Updates install in the desktop app, not in a browser preview."
     : working
       ? state?.status === "downloading"
         ? `Downloading ${megabytes(state.downloaded)}${state.total ? ` of ${megabytes(state.total)}` : ""}. Crossup restarts when it lands.`
@@ -368,7 +368,7 @@ export function AddProfileDialog({
       open={open}
       onClose={onClose}
       title="Add a program"
-      description="Crossup runs its mappings while this program is in front. Pick a running one, or type an executable name."
+      description="Crossup applies its mappings while this program is in front. Pick a running program, or type an executable name."
       maxWidth={460}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -606,7 +606,7 @@ export function SocdDialog({
       open={open}
       onClose={onClose}
       title="Settings backup"
-      description="Copy this out to keep it, or paste one in to put every setting back."
+      description="Copy these settings out to keep them, or paste a saved copy to restore every setting."
       maxWidth={560}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -651,8 +651,8 @@ export function SocdDialog({
       {error && <p className="hb__warn">{error}</p>}
       <p className="hb__row-note">
         {json
-          ? "Everything: profiles, macros, the clicker and the switches. The app also keeps this file at %APPDATA%\\dev.crossup.app\\settings.json. Replace it there with the app closed and it starts from the backup."
-          : "The original Hitboxer format. Profiles and mappings only; macros and the auto clicker are not in it."}
+          ? "Everything: profiles, macros, the clicker and the switches. Crossup also keeps this file at %APPDATA%\\dev.crossup.app\\settings.json. Replace it there with the app closed and it starts from the backup."
+          : "The original Hitboxer format, with profiles and mappings only. Macros and the auto clicker are not included."}
       </p>
     </Modal>
   );

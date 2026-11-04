@@ -337,7 +337,7 @@ export function AutoClickerTab({
 
         <Card
           title="What it presses"
-          note="Keys go out as hardware scan codes, so a game reading input directly still sees them."
+          note="The clicker sends hardware scan codes, so a game that reads input directly still sees a key."
         >
           <SegmentedControl
             label="Input"
@@ -380,7 +380,7 @@ export function AutoClickerTab({
                 </Line>
                 <Line
                   label="Hold Shift"
-                  note="For programs that read the shifted character, like a text box."
+                  note="Turn this on for programs that read the shifted character, such as a text box."
                 >
                   <Switch
                     checked={draft.uppercase}
@@ -396,7 +396,7 @@ export function AutoClickerTab({
         <Card
           lead
           title="How often"
-          note="The rate is kept against an absolute clock, so a slow moment does not slow the rest of the run."
+          note="Crossup times the rate against an absolute clock, so a slow moment does not slow the rest of the run."
         >
           <div className="hb__rows">
             <Line label="Rate">
@@ -426,7 +426,7 @@ export function AutoClickerTab({
               </select>
             </Line>
 
-            <Line label="Duty cycle" note="How much of the interval the button stays down.">
+            <Line label="Duty cycle" note="How long the button stays down in each interval.">
               <input
                 className="hb__range"
                 type="range"
@@ -444,7 +444,7 @@ export function AutoClickerTab({
               </span>
             </Line>
 
-            <Line label="Random rate" note="Spread each interval either side, for a less mechanical rhythm.">
+            <Line label="Random rate" note="Varies each interval by this percentage, so the rhythm is not exact.">
               <input
                 className="hb__range"
                 type="range"
@@ -462,7 +462,7 @@ export function AutoClickerTab({
               </span>
             </Line>
 
-            <Line label="Double click" note="Two clicks a cycle, the pair a Windows double click apart.">
+            <Line label="Double click" note="Sends two clicks a cycle, separated by the Windows double click interval.">
               <Switch
                 checked={draft.doubleClick}
                 label="Double click"
@@ -479,7 +479,7 @@ export function AutoClickerTab({
           </div>
         </Card>
 
-        <Card title="Limits" note="Left at zero, a run goes until it is stopped.">
+        <Card title="Limits" note="A limit of zero means the run continues until you stop it.">
           <div className="hb__rows">
             <Line label="Clicks">
               <NumberField
@@ -502,9 +502,9 @@ export function AutoClickerTab({
         </Card>
 
         <p className="hb__card-note hb__tail-note">
-          Windows paces at best a millisecond, so a run asks the kernel for a 1 ms
-          timer while it goes and gives it back when it stops. If that request is
-          refused, which is reported on the right, a high rate will come out lower.
+          Windows wakes a timer at no finer than 1 ms. A run asks for a 1 ms timer
+          while it goes and releases it when it stops. If Windows refuses the request,
+          which the panel on the right reports, a high rate comes out lower.
         </p>
       </section>
 
@@ -607,7 +607,7 @@ export function AutoClickerTab({
               </button>
             )}
           </div>
-          <Line label="Humanise" note="Scatter inside the radius and travel rather than teleport.">
+          <Line label="Humanise" note="Scatters each click inside the radius and moves the cursor instead of jumping.">
             <Switch
               checked={draft.humanize}
               label="Humanise"
@@ -629,13 +629,13 @@ export function AutoClickerTab({
         <Card title="When to stop" tight>
           <Line
             label="Escape ×3"
-            note="Three quick taps of Escape stop the run, wherever the cursor is and whatever is in front. It is always on, because the keyboard is the one way out that a runaway clicker cannot take away."
+            note="Three quick taps of Escape stop the run, wherever the cursor is and whatever window is in front. This stays on, because it works even when the clicker is holding the mouse button."
           >
             <span className="hb__field-label">always on</span>
           </Line>
           <Line
             label="Screen edges"
-            note="Stops the run when the cursor reaches an edge, which is the way out from under a fast clicker."
+            note="Stops the run when the cursor reaches an edge."
           >
             <Switch
               checked={draft.edgeStop.enabled}
@@ -688,7 +688,7 @@ export function AutoClickerTab({
 
           <Line
             label="Screen corners"
-            note="The same idea for the corners, where a cursor ends up when it is thrown at the screen."
+            note="Stops the run when the cursor reaches a corner."
           >
             <Switch
               checked={draft.cornerStop.enabled}
@@ -735,7 +735,7 @@ export function AutoClickerTab({
 
           <Line
             label="Only in these programs"
-            note="The run waits while anything else is in front. It does not stop."
+            note="The run pauses while another window is in front and continues when this program comes back."
           >
             <Switch
               checked={draft.targets.enabled}
@@ -811,12 +811,12 @@ export function AutoClickerTab({
 
         <Card
           title="Zones"
-          note="Drag a rectangle out on the desktop itself and it becomes a zone that stops, pauses or carries on the run as the cursor enters it."
+          note="Drag a rectangle on the desktop to make a zone that stops, pauses or resumes the run when the cursor enters it."
           tight
         >
           <Line
             label="Watch zones"
-            note="The cursor is read every cycle, so zones are only looked at while this is on."
+            note="Crossup reads the cursor every cycle, so zones only apply while this is on."
           >
             <Switch
               checked={draft.zonesEnabled}
@@ -931,8 +931,8 @@ export function AutoClickerTab({
                 )}
               </div>
               <p className="hb__card-note hb__dim" style={{ margin: "8px 0 0" }}>
-                A stop wins wherever it sits in the list; a carry-on zone carves a
-                hole in a pause zone.
+                A stop zone wins wherever it sits in the list. A carry-on zone overrides a
+                pause zone inside it.
               </p>
             </>
           )}

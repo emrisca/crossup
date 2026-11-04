@@ -33,7 +33,7 @@ export function AppearanceDialog({ open, onClose }: AppearanceDialogProps) {
       open={open}
       onClose={onClose}
       title="Appearance"
-      description="One hue and one saturation derive the whole palette. Every surface in the window is painted with it, so this dialog is the preview."
+      description="One hue and one saturation derive the whole palette. Crossup paints every surface in the window with it, so this dialog is the preview."
       maxWidth={600}
       maxHeight="min(84vh, 720px)"
       footer={
@@ -151,7 +151,7 @@ export function AppearanceDialog({ open, onClose }: AppearanceDialogProps) {
             <span className="appearance__preview-eyebrow">Release notes</span>
             <p className="appearance__preview-title">Version 0.1.0</p>
             <p className="appearance__preview-line">
-              Muted ink sits one step back from the heading, and borders stay quiet.
+              Muted ink is one step dimmer than the heading, and borders stay light.
             </p>
             <div className="appearance__preview-row">
               <span

@@ -382,7 +382,7 @@ export function MacrosTab({
               <div className="hb__rows">
                 <Line
                   label="Shortcut"
-                  note="Taken globally, whether or not this window is in front."
+                  note="Works globally, whether or not this window is in front."
                 >
                   <HotkeyField
                     label="Macro shortcut"
@@ -443,7 +443,7 @@ export function MacrosTab({
               open={deleteOpen}
               onClose={() => setDeleteOpen(false)}
               title={`Delete "${draft.name}"?`}
-              description="The macro and its blocks are removed. Its shortcut is freed for another macro."
+              description="This removes the macro and its blocks, and frees its shortcut for another macro."
               maxWidth={400}
               footer={
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -514,7 +514,7 @@ function NewMacroDialog({
       open={open}
       onClose={onClose}
       title="New macro"
-      description="Blocks are dragged in, reordered, and dropped inside a Repeat. Nothing runs until the macro has a shortcut or you press Run."
+      description="Drag blocks in, reorder them, and drop them inside a Repeat. Nothing runs until the macro has a shortcut or you press Run."
       maxWidth={420}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -529,7 +529,7 @@ function NewMacroDialog({
       }
     >
       <p className="hb__card-note" style={{ margin: 0 }}>
-        It starts with a single Wait block, so there is something to build on.
+        The new macro starts with one Wait block.
       </p>
     </Modal>
   );
@@ -1135,7 +1135,7 @@ function BlockFields({
           <span className="blk__hint">
             {step.relative
               ? "The cursor moves from wherever it is: negative x goes left, negative y goes up."
-              : "A negative coordinate is a screen left of or above the main one."}
+              : "A negative coordinate points to a screen left of or above the main one."}
           </span>
         </div>
       );
@@ -1219,8 +1219,8 @@ function BlockFields({
               )}
               <span className="blk__hint">
                 {step.relative
-                  ? "Presses where the cursor is, travels that offset, lets go."
-                  : "Presses where the cursor is, travels to that point, lets go."}
+                  ? "Presses where the cursor is, moves by that offset, and releases."
+                  : "Presses where the cursor is, moves to that point, and releases."}
               </span>
             </>
           )}
@@ -1245,8 +1245,8 @@ function BlockFields({
                 onValueChange={(holdMs) => onReplace({ ...step, holdMs })}
                 title={
                   step.mode === "drag"
-                    ? "How long the button stays down where the drag landed before letting go."
-                    : "How long the button stays down. A tap never presses for less than 15 ms, one frame, because a game can miss a press and a release that arrive together."
+                    ? "How long the button stays down at the end of the drag before it releases."
+                    : "How long the button stays down. A tap holds for at least 15 ms, one frame, because a game can miss a press and a release that arrive together."
                 }
               />
               <span className="hb__field-label">

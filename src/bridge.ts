@@ -1151,7 +1151,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       const settings = mock.clicker;
       // A rate that would be refused for real is refused here too.
       if (clicksPerSecond(settings) > 1_000) {
-        return Promise.reject("that works out to more clicks per second than Windows will pace");
+        return Promise.reject("that is more clicks per second than Windows can pace");
       }
       mockStart(
         "clicker",
@@ -1355,7 +1355,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       // There is no file behind the browser stand-in to hand back.
       return "{}" as T;
     case "import_settings":
-      throw new Error("the preview keeps no settings file to import into");
+      throw new Error("the browser preview keeps no settings file to import into");
     case "export_socd":
       return mock.profiles
         .map(

@@ -83,7 +83,7 @@ export function RemapperTab({
                   These mappings, in {profile.program}
                 </span>
                 <span className="hb__row-note">
-                  Off skips them while that program is in front. The remapper stays
+                  Off skips the mappings while that program is in front. The remapper stays
                   on everywhere else.
                 </span>
               </span>
@@ -124,7 +124,7 @@ export function RemapperTab({
 
         {!view.hook_enabled && (
           <p className="hb__warn">
-            The remapper is switched off: every key reaches the program in front
+            The remapper is off, so every key reaches the program in front
             untouched, whatever the mappings below say.
           </p>
         )}

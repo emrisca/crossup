@@ -189,7 +189,7 @@ export function TyperTab({
           />
           <HotkeyField
             label="Start shortcut"
-            note="A key combination that starts the draft, or stops a run that is going. A mouse button cannot type, so this one is keyboard only."
+            note="Starts the draft, or stops a run that is going. This one is keyboard only, because a mouse button cannot type."
             value={draft.hotkey}
             onChange={(hotkey) => update({ hotkey })}
           />
@@ -197,15 +197,15 @@ export function TyperTab({
 
         {status?.status === "unfocused" && (
           <p className="hb__warn">
-            The window in front changed while this run was typing, so it stopped where
-            it was rather than typing the rest into somewhere else.
+            The window in front changed while the typer was running, so it stopped
+            instead of typing the rest into another window.
           </p>
         )}
 
         <Card
           lead
           title="Text to type"
-          note="Typed one keystroke at a time into whichever window is in front. Enter and Tab are sent as themselves, so paragraphs and indentation arrive as written."
+          note="The typer sends one keystroke at a time to whichever window is in front. Enter and Tab go as themselves, so paragraphs and indentation arrive as written."
         >
           <textarea
             className="hb__code hb__typer-text"
@@ -241,10 +241,10 @@ export function TyperTab({
 
         <Card
           title="How it types"
-          note="A run keeps a person's pace rather than a machine's: the gaps carry a little spread, and a mistype is a wrong key, a pause and a backspace rather than a silent correction."
+          note="The typer keeps a human pace. The gaps between keystrokes vary, and a mistyped character becomes a wrong key, a pause and a backspace instead of a silent correction."
         >
           <div className="hb__rows">
-            <Line label="Pace" note="Words a minute, five characters to the word.">
+            <Line label="Pace" note="Words a minute, at five characters to the word.">
               <input
                 className="hb__range"
                 type="range"
@@ -261,7 +261,7 @@ export function TyperTab({
 
             <Line
               label="Typo rate"
-              note="The share of characters mistyped and then corrected."
+              note="The share of characters mistyped, then corrected with a backspace."
             >
               <input
                 className="hb__range"
@@ -279,7 +279,7 @@ export function TyperTab({
 
             <Line
               label="Finish by"
-              note="Paces the whole run to land the last keystroke on time. It wins over the pace above."
+              note="Spreads the run so the last keystroke lands on time. This overrides the pace above."
             >
               <Switch
                 checked={draft.deadlineSecs !== null}
@@ -300,7 +300,7 @@ export function TyperTab({
 
             <Line
               label="Countdown"
-              note="Start is pressed in this window, so the run waits before its first keystroke. That gap is long enough to click into the window being typed into."
+              note="The run waits this long before the first keystroke, so you can click into the window that should receive the text."
             >
               <NumberField
                 label="Seconds before the first keystroke"
@@ -312,16 +312,16 @@ export function TyperTab({
           </div>
           {plan?.clamped && (
             <p className="hb__warn">
-              That deadline is faster than {pace(plan.cps)}, so the pace is clamped and the
-              run will finish late rather than burst the keystrokes together.
+              That deadline needs more than {pace(plan.cps)}. The typer uses its fastest
+              pace, so the run finishes late instead of sending keystrokes in a burst.
             </p>
           )}
         </Card>
 
         <p className="hb__card-note hb__tail-note">
-          Text goes out as Unicode keystrokes, so a layout the machine is not set to still
-          receives the characters it can show. There is no clipboard involved: what is
-          typed is what is in the editor.
+          The typer sends Unicode keystrokes, so a keyboard layout the machine is not set
+          to still receives the characters it can display. Nothing goes through the
+          clipboard; the typer types what is in the editor.
         </p>
       </section>
 
@@ -351,15 +351,15 @@ export function TyperTab({
 
           <p className="hb__card-note" style={{ marginTop: 8 }}>
             {status?.status === "typing" && status.typed === 0
-              ? "Click into the window to type into; the run starts when the countdown ends."
+              ? "Click into the window that should receive the text. The run starts when the countdown ends."
               : running
-                ? "Typing into the window that was in front when it started."
+                ? "Typing into the window that was in front when the run started."
                 : status?.status === "done"
                   ? "The whole draft is out."
                   : status?.status === "unfocused"
                     ? "Stopped because another window came forward."
                     : status?.status === "paused"
-                      ? "Paused where it stands. Nothing is typed until it is resumed."
+                      ? "Paused. Nothing is typed until you resume."
                       : "Nothing has run yet."}
           </p>
 
@@ -385,17 +385,17 @@ export function TyperTab({
 
         <Card title="While it types" tight>
           <p className="hb__card-note">
-            The window in front is the one that gets the text. If anything else comes
-            forward, this window included, the run stops where it stands instead of
-            typing into the wrong place.
+            The window in front receives the text. If another window comes
+            forward, this one included, the run stops instead of
+            typing into the wrong window.
           </p>
           <p className="hb__card-note">
-            One run at a time: starting the typer while the clicker or a macro is going is
-            refused with a message, and switching the typer off in its tab stops it.
+            Only one run happens at a time. Starting the typer while the clicker or a macro
+            runs is refused with a message, and turning the typer off in its tab stops it.
           </p>
           <p className="hb__card-note">
-            Escape ×3 stops the clicker, and the shortcut above stops this; both are read
-            between keystrokes, so a stop lands in about a frame.
+            Escape ×3 stops the clicker, and the shortcut above stops the typer. Both are
+            read between keystrokes, so a stop lands within about a frame.
           </p>
         </Card>
 
