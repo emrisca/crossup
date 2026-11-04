@@ -266,13 +266,13 @@ export function TyperTab({
 
             <Line
               label="Pace fluctuation"
-              note="How far each word's pace may wander from the slider, either side. Zero types like a metronome; ten percent loses the rhythm and finds it again. A deadline keeps the exact pace instead, because the last keystroke has to land on time."
+              note="How far each word's pace may wander from the slider, either side, and how far the gaps between keys do. Zero types like a metronome; a fifth loses the rhythm and finds it again. A deadline keeps the exact pace instead, because the last keystroke has to land on time."
             >
               <input
                 className="hb__range"
                 type="range"
                 min={0}
-                max={25}
+                max={50}
                 step={1}
                 value={Math.round(draft.paceVariation * 100)}
                 disabled={running || draft.deadlineSecs !== null}
@@ -487,7 +487,7 @@ export function TyperTab({
               thinkMaxSecs: 2.5,
               thinkAfterSentence: true,
               thinkInLongSentence: true,
-              paceVariation: 0.08,
+              paceVariation: 0.2,
             })
           }
         >

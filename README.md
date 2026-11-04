@@ -244,10 +244,14 @@ ever be offered.
 - **Pace.** Words a minute, read back as keys a second and the gap between them.
   Five characters to a word, the count every words-a-minute figure uses.
 - **Pace fluctuation.** A percentage either side of the pace that each word may
-  aim for, so a paragraph speeds up and eases off the way a person does. Zero
-  types like a metronome; a deadline overrides it and keeps the exact pace.
-- **Typo rate.** The share of characters mistyped and corrected: a neighbouring
-  key, a pause while it is noticed, a backspace, then the right one.
+  aim for, and of the gap between two keys, so a paragraph speeds up and eases
+  off the way a person does. It starts at a fifth; smaller shares average out
+  over a sentence and read as a metronome. A deadline overrides it and keeps the
+  exact pace.
+- **Typo rate.** The share of characters mistyped and corrected. A mistype is
+  usually one letter, sometimes two or three, each a neighbour on the keyboard;
+  then a pause while it is noticed, a backspace for each, a breath, and the
+  right letters again.
 - **Thinking pauses.** Stops between words, each up to the longest set. They
   land after a sentence's full stop, and inside a sentence that runs on, after a
   random fifteen to thirty words counted from the last pause. The estimate

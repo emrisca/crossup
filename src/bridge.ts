@@ -270,7 +270,7 @@ export const DEFAULT_TYPER: TyperSettings = {
   thinkMaxSecs: 2.5,
   thinkAfterSentence: true,
   thinkInLongSentence: true,
-  paceVariation: 0.08,
+  paceVariation: 0.2,
 };
 
 /** What a run is doing, as the shell reports it. */
@@ -956,7 +956,7 @@ function mockPlan(text: string, settings: TyperSettings): TyperPlan {
     chars,
     words,
     cps,
-    totalMs: Math.round(chars * charMs + corrections * (charMs * 0.9 + 170) + thinkingMs),
+    totalMs: Math.round(chars * charMs + corrections * (charMs * 4.5 + 235) + thinkingMs),
     thinkingMs,
     clamped: asked > MAX_TYPER_CPS,
   };

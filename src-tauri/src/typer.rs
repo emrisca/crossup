@@ -51,9 +51,9 @@ const LONG_SENTENCE_MIN_WORDS: u32 = 15;
 const LONG_SENTENCE_MAX_WORDS: u32 = 30;
 /// The largest share the pace may wander from the asked speed, either side.
 const MAX_PACE_DRIFT: f64 = 0.5;
-/// What a fresh typer wanders: small enough that a paragraph still averages the
-/// number on the slider.
-const DEFAULT_PACE_DRIFT: f64 = 0.08;
+/// What a fresh typer wanders. It was a twelfth of the pace, which averaged out
+/// over a sentence to a metronome; a fifth is the first share a watcher can see.
+const DEFAULT_PACE_DRIFT: f64 = 0.2;
 /// The pace a fresh typer starts at: an unhurried person.
 const DEFAULT_WPM: f64 = 65.0;
 /// The shortcut a fresh typer comes up with. A slot reading "not set" is a
@@ -97,8 +97,8 @@ pub struct TyperSettings {
     /// fifteen to thirty words.
     pub think_in_long_sentence: bool,
     /// How far each word's pace may sit from the one on the slider, as a share
-    /// either side. Zero is a metronome; a quarter is a person losing the rhythm
-    /// and finding it again.
+    /// either side. Zero is a metronome; a fifth is a person losing the rhythm
+    /// and finding it again, and a half is the ceiling the engine allows.
     pub pace_variation: f64,
 }
 
@@ -233,8 +233,11 @@ pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
     // worth more time than the character it stands in for.
     let corrections = (chars as f64 * settings.typo()).round();
     let thinking_ms = (settings.thinking_secs(words, sentences) * 1_000.0).round();
+    // A mistype costs the wrong letters, the beat where it is noticed, the
+    // backspaces and the breath before the retype — about four and a half key
+    // gaps, measured against the driver's own waits.
     let total_ms = (chars as f64 * char_ms
-        + corrections * (char_ms * 0.9 + 170.0)
+        + corrections * (char_ms * 4.5 + 235.0)
         + thinking_ms)
         .round();
     TyperPlan {
@@ -572,17 +575,32 @@ fn drive(
         if !focused(&target, &mut checked) {
             return "unfocused";
         }
-        // A mistype is a wrong character, a pause while it is noticed, and a
-        // backspace — the three keystrokes a person makes, at a person's speed,
-        // rather than a correction done instantly.
-        if roll.next() < typo && character.is_alphanumeric() {
-            let wrong = wrong_for(*character, roll.next());
-            input::text(&wrong.to_string());
-            if !wait(stop, char_ms * 0.55) {
+        // A mistype is a wrong letter or a short run of them, typed at the pace
+        // the rest of the word is going at, then noticed — a beat longer than a
+        // key gap — and erased one backspace at a time before the right letters
+        // go out again. One key swapped for another in an instant reads as a
+        // machine; a burst reads as a hand that got ahead of an eye.
+        if character.is_alphanumeric() && roll.next() < typo {
+            let burst = typo_burst(characters, index, roll.next());
+            for step in 0..burst {
+                let wrong = wrong_for(characters[index + step], roll.next());
+                input::text(&wrong.to_string());
+                if !wait(stop, char_ms * (0.85 + roll.next() * 0.45) * drift) {
+                    return "stopped";
+                }
+            }
+            // The pause where the mistake registers.
+            if !wait(stop, char_ms * (0.8 + roll.next() * 1.2)) {
                 return "stopped";
             }
-            tap(BACKSPACE);
-            if !wait(stop, 80.0) {
+            for _ in 0..burst {
+                tap(BACKSPACE);
+                if !wait(stop, char_ms * (0.6 + roll.next() * 0.8)) {
+                    return "stopped";
+                }
+            }
+            // A breath before the retype, so the correction is not one blur.
+            if !wait(stop, 150.0 + roll.next() * 170.0) {
                 return "stopped";
             }
         }
@@ -594,7 +612,7 @@ fn drive(
         progress.bump();
         // A little spread either side of the word's pace, scaled by the same
         // fluctuation: the same gap every time is what reads as a machine.
-        let gap = char_ms * drift * (1.0 - pace / 2.0 + roll.next() * pace);
+        let gap = char_ms * drift * (1.0 - pace + roll.next() * pace * 2.0);
         if !wait(stop, gap) {
             return "stopped";
         }
@@ -691,6 +709,25 @@ fn long_sentence_gap_mid() -> f64 {
 fn long_sentence_gap(roll: &mut Roll) -> u32 {
     let span = LONG_SENTENCE_MAX_WORDS - LONG_SENTENCE_MIN_WORDS + 1;
     LONG_SENTENCE_MIN_WORDS + ((roll.next() * span as f64) as u32).min(span - 1)
+}
+
+/// How many characters a mistype takes with it: usually one, sometimes two or
+/// three, and never more than the run of letters and digits that follows. The
+/// retyped characters go out through the ordinary path, at the ordinary pace.
+fn typo_burst(characters: &[char], index: usize, roll: f64) -> usize {
+    let wanted = if roll < 0.6 {
+        1
+    } else if roll < 0.9 {
+        2
+    } else {
+        3
+    };
+    let available = characters[index..]
+        .iter()
+        .take(3)
+        .take_while(|character| character.is_alphanumeric())
+        .count();
+    wanted.min(available).max(1)
 }
 
 /// The wrong character to type for a mistype: a neighbour from the same row of
@@ -845,6 +882,19 @@ mod tests {
             }
         }
         assert!(plan("x", &settings).chars == 1);
+    }
+
+    #[test]
+    fn a_mistype_is_a_short_run_of_letters_and_never_past_the_word() {
+        let word: Vec<char> = "abcdef".chars().collect();
+        let spaced: Vec<char> = "ab cd".chars().collect();
+        assert_eq!(typo_burst(&word, 0, 0.0), 1);
+        assert_eq!(typo_burst(&word, 0, 0.7), 2);
+        assert_eq!(typo_burst(&word, 0, 0.95), 3);
+        // The space ends the run, whatever the roll asks for.
+        assert_eq!(typo_burst(&spaced, 0, 0.95), 2);
+        // Starting near the end takes only what is left.
+        assert_eq!(typo_burst(&word, 5, 0.95), 1);
     }
 
     #[test]
