@@ -22,7 +22,10 @@
   --sub: #fafafa;
 
   --hairline: rgba(0, 0, 0, 0.14);
-  --hairline-strong: rgba(0, 0, 0, 0.26);
+  --hairline-strong: rgba(0, 0, 0, 0.44);
+  /* The edge of a control, held at 3:1 against the panel so a field reads as a
+     field and a dashed add-button reads as something to press. */
+  --edge: rgba(0, 0, 0, 0.48);
 
   --ink: #131313;
   --ink-2: #454545;
@@ -43,6 +46,21 @@
     inset 0 0 0 1px rgba(0, 0, 0, 0.11);
   --shadow-row: inset 0 0 0 1px rgba(0, 0, 0, 0.07),
     0 1px 2px rgba(0, 0, 0, 0.05);
+
+  /* One type ramp for the window. Sizes are steps on it, not per-rule choices:
+     a display line, a figure, running text, a control, a label, a micro tag. */
+  --text-display: 22px;
+  --text-figure: 16px;
+  --text-body: 12.75px;
+  --text-control: 11.5px;
+  --text-label: 10.5px;
+  --text-micro: 9.5px;
+  --leading-display: 1.15;
+  --leading-body: 1.6;
+  --leading-control: 1.4;
+  --tracking-display: -0.03em;
+  --tracking-label: 0.085em;
+  --measure: 64ch;
 }
 
 .dark {
@@ -52,7 +70,8 @@
   --sub: #1a1a17;
 
   --hairline: rgba(255, 255, 255, 0.16);
-  --hairline-strong: rgba(255, 255, 255, 0.28);
+  --hairline-strong: rgba(255, 255, 255, 0.36);
+  --edge: rgba(255, 255, 255, 0.38);
 
   --ink: #f8f8f4;
   --ink-2: #c2c2ba;
@@ -83,6 +102,7 @@
   --color-sub: var(--sub);
   --color-hairline: var(--hairline);
   --color-hairline-strong: var(--hairline-strong);
+  --color-edge: var(--edge);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
   --color-ink-3: var(--ink-3);
@@ -92,8 +112,11 @@
   --color-flag: var(--flag);
 
   /* No Next.js font loader here: the desktop app carries no webfont. */
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, monospace;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI",
+    ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI Variable Text",
+    "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 html {

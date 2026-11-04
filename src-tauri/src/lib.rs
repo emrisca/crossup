@@ -101,6 +101,7 @@ struct MacroView {
 /// One saved recording, as the list shows it: no events, because the window
 /// never needs them and a long recording is not something to send every frame.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct RecordingView {
     id: String,
     name: String,
@@ -112,6 +113,7 @@ struct RecordingView {
 /// `replay::replay_state` instead: a recording changes while the window is
 /// hidden, and has no business being part of a settings snapshot.
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ReplayView {
     recordings: Vec<RecordingView>,
     selected: String,

@@ -63,7 +63,7 @@
 
 .hb__add {
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  width: 100%; padding: 8px; border: 1px dashed var(--hairline-strong);
+  width: 100%; padding: 8px; border: 1px dashed var(--edge);
   border-radius: 9px; background: none; color: var(--ink-2);
   font: inherit; font-size: 12px; cursor: pointer;
   transition: background-color 0.14s ease, color 0.14s ease;
@@ -467,7 +467,7 @@ button.hb__row { cursor: pointer; }
 
 .pal__item {
   display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
-  border: 1px dashed var(--hairline-strong); border-radius: 9px; background: none;
+  border: 1px dashed var(--edge); border-radius: 9px; background: none;
   color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: grab;
   transition: background-color 0.14s ease, color 0.14s ease;
 }
@@ -518,7 +518,7 @@ button.hb__row { cursor: pointer; }
    so the tree stays quiet the rest of the time. */
 .blk__tail {
   display: none; margin-top: 6px; padding: 8px 10px;
-  border: 1px dashed var(--hairline-strong); border-radius: 9px; text-align: center;
+  border: 1px dashed var(--edge); border-radius: 9px; text-align: center;
   font-size: 10px; font-weight: 550; letter-spacing: 0.07em; text-transform: uppercase;
   color: var(--ink-3);
 }
@@ -764,3 +764,125 @@ button.hb__row { cursor: pointer; }
 .hb__sk-block { width: 100%; height: 120px; }
 .hb__sk-block--short { height: 72px; }
 .hb__sk-status { padding: 0 10px; font-size: 10.5px; color: var(--ink-3); }
+
+/* ── type scale ─────────────────────────────────────────────────
+   Everything above picked a size where it needed one. This block is the
+   ramp they all resolve to now: display 22, figure 16, body 12.75, control
+   11.5, label 10.5, micro 9.5. Titles carry negative tracking because at
+   22px the default spacing opens up; labels carry positive tracking because
+   small caps need air to stay legible. Numbers that move are tabular, so a
+   counter does not shove the row it sits in. Body copy keeps a measure.
+   ─────────────────────────────────────────────────────────────── */
+
+.hb__title,
+.hb__field--title,
+.hb__stat-value,
+.hb__empty-title,
+.hb__card--lead .hb__card-title {
+  font-family: var(--font-display);
+}
+
+.hb__title {
+  font-size: var(--text-display);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  font-weight: 600;
+}
+
+.hb__field--title { font-size: var(--text-figure); line-height: var(--leading-control); letter-spacing: -0.02em; }
+
+.hb__sub {
+  font-size: var(--text-label);
+  line-height: var(--leading-control);
+  letter-spacing: 0.045em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.hb__card-title {
+  font-size: var(--text-label);
+  font-weight: 620;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.hb__card--lead .hb__card-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  color: var(--ink);
+}
+
+.hb__card-note,
+.hb__empty-note,
+.appearance__preview-line {
+  max-width: var(--measure);
+  line-height: var(--leading-body);
+}
+
+.hb__card-note { font-size: var(--text-body); }
+.hb__empty-note { font-size: var(--text-body); max-width: 46ch; }
+
+.hb__rail-label,
+.hb__thead,
+.hb__stat-label,
+.appearance__label {
+  letter-spacing: var(--tracking-label);
+  font-weight: 620;
+}
+
+.hb__stat-value {
+  font-size: var(--text-figure);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.hb__stat-label { font-size: var(--text-micro); line-height: 1.2; }
+
+.hb__profile-name,
+.hb__recording-name { font-size: var(--text-body); line-height: var(--leading-control); }
+
+.hb__readout,
+.hb__profile-meta,
+.hb__recording-meta,
+.hb__foot,
+.hb__brand-note,
+.hb__path,
+.hb__point-at,
+.hb__pill,
+.hb__mode,
+.meta {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+.hb__recording-meta { font-size: var(--text-label); line-height: var(--leading-control); }
+.hb__profile-meta { font-size: var(--text-micro); line-height: 1.2; }
+.hb__field-label { font-size: 11px; line-height: var(--leading-control); letter-spacing: 0.005em; }
+.hb__mini,
+.hb__add,
+.hb__check,
+.hb__tag { font-size: var(--text-control); }
+.hb__mini { line-height: var(--leading-control); }
+.hb__empty-title { font-size: 14px; line-height: 1.3; letter-spacing: -0.015em; }
+.hb__legend-name { letter-spacing: 0.015em; }
+.hb__legend-note { line-height: 1.5; }
+.kbd,
+.hb__hotkey { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+
+/* ── control edges ──────────────────────────────────────────────
+   A well is a fill 2% away from the panel, which is enough to see and not
+   enough to identify a control by. Text fields and hotkey slots therefore
+   get a one-pixel edge at 3:1, per WCAG 1.4.11. Everything structural keeps
+   the quieter hairline. */
+.hb__field,
+.hb__hotkey,
+.hb__search,
+.studio__search,
+.appearance__range::-webkit-slider-thumb {
+  box-shadow: var(--shadow-well), inset 0 0 0 1px var(--edge);
+}

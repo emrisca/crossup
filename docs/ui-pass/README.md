@@ -1,9 +1,10 @@
-# UI pass, 0.1.0 to 0.2.2
+# UI pass, 0.1.0 to 0.2.4
 
 Screenshots and notes for the design passes that followed
-[DESIGN-REVIEW.md](../../DESIGN-REVIEW.md). Every picture is the running app at
-`localhost:1420` in its default preset (hue 264, dark), captured at 836 x 1216
-unless noted, so the pairs line up.
+[DESIGN-REVIEW.md](../../DESIGN-REVIEW.md). Pictures up to round four are the
+app at `localhost:1420` in its default preset (hue 264, dark), captured at
+836 x 1216 so the pairs line up. From round five the pictures are the packaged
+window, and they say so.
 
 To reproduce: `npm run dev`, open the tab in the pair, and compare.
 
@@ -99,6 +100,56 @@ the selection that went with it, so a recording returns to its place and stays
 selected. The window never holds a recording's events, which is why the restore
 lives in Rust rather than in the tab.
 
+## Round five: type and measured contrast
+
+These pictures are the packaged window, not the dev server: the binary from
+`tauri build --no-bundle`, captured from its own WebView2 window at 1120 x 760.
+
+| Packaged, Remapper | Packaged, Auto clicker |
+| --- | --- |
+| ![Packaged Remapper](packaged-remapper.png) | ![Packaged Auto clicker](packaged-clicker.png) |
+
+| Packaged, Macros | Packaged, light mode |
+| --- | --- |
+| ![Packaged Macros](packaged-macros.png) | ![Packaged light mode](packaged-light.png) |
+
+The packaged run also caught a bug the mock could not: opening Replayer blanked
+the window, because the engine sent `record_hotkey` where the tab read
+`recordHotkey`. The two view structs now serialize camelCase, and the pictures
+above are from the build that has the fix.
+
+What changed on screen: a 22px display line with `-0.03em` tracking, card labels
+set in 10.5px caps with 0.085em between letters, notes at 12.75px on a 1.6 line
+and capped at 64 characters, figures at 16px on the display face, and counters
+that keep their width while they run because the numerals are tabular. Text
+fields and the add button carry a one-pixel edge you can actually see.
+
+### The numbers
+
+Each computed colour was painted into a one-pixel canvas and read back, so
+`oklch` and `color-mix` are measured as rendered; backgrounds are composited up
+the ancestor chain. Ratios use the WCAG 2.1 relative-luminance formula.
+
+| Pair | Dark | Light | Needs |
+| --- | --- | --- | --- |
+| body ink / panel | 17.19 | 17.49 | 4.5 |
+| secondary ink / panel | 12.80 | 13.19 | 4.5 |
+| muted ink / panel | 9.12 | 8.23 | 4.5 |
+| muted ink / well | 8.39 | 9.15 | 4.5 |
+| accent / panel | 9.15 | 8.27 | 4.5 |
+| danger / panel | 7.21 | 5.44 | 4.5 |
+| success / panel | 7.51 | 5.20 | 4.5 |
+| control edge / panel | 3.51 | 3.61 | 3 |
+| control edge / well | 3.57 | 3.68 | 3 |
+| focus ring / panel | 9.15 | 8.27 | 3 |
+
+The first run found one AA failure. The dashed add-button border and the
+one-pixel field edges used `--hairline-strong` at 1.63:1 in the dark and 2.35:1
+in the light, under the 3:1 a control boundary needs; the palette computes that
+token at runtime, so the stylesheet fallback could not fix it. A dedicated
+`--edge` token now carries 3.51 and 3.61, and every control edge uses it. The
+table above is the run after the fix.
+
 ## Round four: undo restores the view, not just the row
 
 | Macro after Undo | Recording after Undo |
@@ -127,9 +178,9 @@ page both at 150 at full scroll), so the round-three evidence still stands.
 
 | Criterion | Score | Evidence |
 | --- | --- | --- |
-| Typography | 9 / 10 | Four sizes carry the window (21, 13, 12, 10 to 11.5), tracking `-0.03em` on titles, mono for numbers. The system stack is the ceiling. |
+| Typography | 9.5 / 10 | One six-step ramp: 22 display, 16 figure, 12.75 body, 11.5 control, 10.5 label, 9.5 micro. Segoe UI Variable Display for titles and figures, Text for running copy, 1.6 leading with a 64ch measure, 0.085em on caps labels, tabular figures wherever a number moves. Half off because the mono subtitle still sets a sentence. |
 | Spacing rhythm | 9.5 / 10 | `grep` for 11 to 15px gaps, paddings and margins in `app.css` returns nothing; the shell, brand, rail head, table row, pills, builder and undo bar all moved on scale this pass. |
-| Contrast | 9 / 10 | Three ink steps, both modes from the same tokens. `--ink-3` at 10px is the tightest pair; judged from token values, not a contrast tool. |
+| Contrast | 9.5 / 10 | Measured from rendered pixels in both modes: weakest text pair 5.20:1, weakest body pair 8.23:1, control edges 3.51 to 3.68:1. The one failure found (1.63 to 2.35:1 on dashed and field edges) was fixed with a dedicated `--edge` token. |
 | States | 9.5 / 10 | Empty states name the next action, the boot frame is a skeleton, errors use `role="status"`, disabled buttons fade to 50 percent, focus is the 2px accent ring from `styles.css`. Delete now has a recovery state rather than a question. |
 | Motion | 9 / 10 | Press depth, panel lift, a 160ms undo slide. Reduced motion is handled in the tab strip and in the undo bar's media query. |
 | Hierarchy | 9.5 / 10 | One lead surface per tab, hairline groups elsewhere, and a title row that stays put while the controls move. |

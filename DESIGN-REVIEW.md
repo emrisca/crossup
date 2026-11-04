@@ -12,7 +12,7 @@ components, strings) and on the app running at `localhost:1420`.
 | --- | --- | --- |
 | ui-design (house rules) | 9.5 / 10 | Every gap, padding and margin in `app.css` is on the 6/8/10 scale; one icon set at one weight; the boot frame is a skeleton; the tab strip and every dialog read the palette tokens. The half point comes off the two slider tracks that keep a gradient, because a hue slider without a spectrum is a worse control. |
 | design craft (a point of view) | 9.5 / 10 | The material model (bezel, panel, well), the press-depth buttons and the one-hue palette engine are this app's own. One lead surface per tab, a title row that pins while the list scrolls, and deletes that come back are the kind of thing a person notices only when it is missing. |
-| **Overall UI/UX** | **9.5 / 10** | Coherent, legible and comfortable, with one clear place to look on every tab and an escape hatch from every destructive edit. Typography is what holds the last half point: the app reads at 10 to 13px on the system stack. |
+| **Overall UI/UX** | **9.5 / 10** | Coherent, legible and comfortable, with one clear place to look on every tab and an escape hatch from every destructive edit. Typography no longer holds it back: running text is 12.75px on a 1.6 line with a 64ch measure, figures are 16px tabular, the display line is 22px on Segoe UI Variable Display, and labels are 10.5px caps at 0.085em. The remaining half point is the two gradient slider tracks and the fact that a custom hue and saturation can still produce a preset whose danger and success steps sit near the floor. |
 
 ## Criteria
 
@@ -21,9 +21,9 @@ Each line is judged against the running app, not the intent. Evidence lives in
 
 | Criterion | Score | Note |
 | --- | --- | --- |
-| Typography | 9 / 10 | Four sizes carry the window (21 title, 13 body, 12 controls, 10 to 11.5 labels and readouts), with `-0.03em` tracking on the title and a mono face for numbers. The gap is the system stack: text at 10px is legible but generic, and a display face would be a larger change than this pass. |
+| Typography | 9.5 / 10 | A six-step ramp replaces the per-rule sizes: 22 display, 16 figure, 12.75 body, 11.5 control, 10.5 label, 9.5 micro. Titles set in Segoe UI Variable Display with `-0.03em`; running copy in Segoe UI Variable Text at 1.6 with a 64ch measure; caps labels at 0.085em; tabular figures everywhere a number moves. Half a point off because the mono subtitle still sets a sentence rather than a value. |
 | Spacing rhythm | 9.5 / 10 | No gap, padding or margin in `app.css` uses 11, 12, 13, 14 or 15px any more. The last ones were the shell padding, the brand block, the rail head, the table row, the pill and the undo bar. |
-| Contrast | 9 / 10 | The ink ladder separates title, body and note by a step each, and both modes use the same tokens. The weakest pair is `--ink-3` at 10px on `--panel`; it clears the small-text ratio but has the least room. Measured from the tokens rather than with a contrast tool. |
+| Contrast | 9.5 / 10 | Measured in the running window by reading rendered pixels and compositing every ancestor background, in both modes, across all five tabs and the Appearance dialog. The weakest text pair is 5.20:1 (success on panel, light); the weakest body pair is 8.23:1. Control edges were the one real failure at 1.63 to 2.35:1 and now sit at 3.51 to 3.68:1. |
 | States | 9.5 / 10 | Empty states name the next action (mappings, recordings, macros, zones), the boot frame is a skeleton shaped like the window, errors land in a `role="status"` row, and disabled press buttons drop to 50 percent. Focus is a 2px accent ring from `styles.css`, because the controls are native elements rather than divs. |
 | Motion | 9 / 10 | Press depth, panel lift and the undo bar slide, all under 200ms. Reduced motion is handled in the tab strip through `useReducedMotion` and in the undo bar through a `prefers-reduced-motion` block. |
 | Hierarchy | 9.5 / 10 | One lead surface per tab, quiet groups divided by hairlines everywhere else, and a title row that stays in view so the tool and its live state never scroll away. |
@@ -165,14 +165,100 @@ Verified from the rendered state, not the command's return: after Undo the macro
 name field reads `Burst fire`, the rail row is current, and the empty state is
 gone; the recording row comes back `aria-current` with the subtitle naming it.
 
+## Round five: type and measured contrast, shipped in 0.2.4
+
+### The type ramp
+
+The complaint in every earlier round was that the window read small and even.
+The sizes were not wrong so much as unchosen: each rule picked its own, between
+9.5 and 19px, with no shared line height or tracking. 0.2.4 replaces them with
+one ramp, declared once in `styles.css` and applied in a single block at the end
+of `app.css`.
+
+| Role | 0.2.3 | 0.2.4 |
+| --- | --- | --- |
+| Page title | 19px, `-0.025em`, system sans | 22px, `-0.03em`, Segoe UI Variable Display, 1.15 |
+| Subtitle | 10px mono, no numeric control | 10.5px mono, 0.045em, tabular |
+| Card heading | 11.5 or 12.5px sentence case | 10.5px caps, 0.085em; the lead card keeps 13.5px sentence case |
+| Card note | 11.5px, 1.5, unbounded measure | 12.75px, 1.6, 64ch |
+| Statistic | 15px mono | 16px display, tabular |
+| Profile and recording name | 12.5px | 12.75px, 1.4 |
+| Field label | 11px | 11px, 1.4, 0.005em |
+| Micro meta | 9.5 to 10px | 9.5 to 10.5px, tabular |
+
+Two typefaces do the work, both already on Windows: Display for headings and
+figures, Text for running copy. No webfont is shipped, so the window still
+starts instantly and the text renders in the face the OS hinting was tuned for.
+`font-variant-numeric: tabular-nums` is on every counter, readout, hotkey and
+meta line, because the clicker's numbers change while you watch them and a
+proportional 1 would shuffle the row on each tick.
+
+### Measured contrast
+
+Method: each computed colour is resolved by painting it into a one-pixel canvas
+and reading the pixel back, so `oklch` and `color-mix` values are measured as the
+engine renders them rather than as written. Backgrounds are composited up the
+ancestor chain until an opaque layer, then the WCAG 2.1 relative-luminance
+formula gives the ratio. Thresholds: 4.5:1 for text below 24px (18.66px when
+bold), 3:1 for control boundaries and focus rings per 1.4.11. The palette is the
+Indigo preset at hue 264 and saturation 0.05, measured in both modes across all
+five tabs and the Appearance dialog.
+
+| Pair | Dark | Light | Needs | Result |
+| --- | --- | --- | --- | --- |
+| Body ink on panel | 17.19 | 17.49 | 4.5 | pass |
+| Secondary ink on panel | 12.80 | 13.19 | 4.5 | pass |
+| Muted ink on panel | 9.12 | 8.23 | 4.5 | pass |
+| Muted ink on well | 8.39 | 9.15 | 4.5 | pass |
+| Accent label on panel | 9.15 | 8.27 | 4.5 | pass |
+| Danger on panel | 7.21 | 5.44 | 4.5 | pass |
+| Success on panel | 7.51 | 5.20 | 4.5 | pass |
+| Control edge on panel | 3.51 | 3.61 | 3 | pass |
+| Control edge on well | 3.57 | 3.68 | 3 | pass |
+| Focus ring on panel | 9.15 | 8.27 | 3 | pass |
+| Hairline on panel, structure only | 1.63 | 2.35 | exempt | decorative separator |
+
+One failure was found and fixed. The dashed border on the add-program button and
+the one-pixel edge on text fields used `--hairline-strong`, which measured 1.63:1
+in the dark and 2.35:1 in the light: below the 3:1 that a control boundary needs.
+The token is computed by the palette engine at runtime, so the CSS fallback could
+not move it. A dedicated `--edge` token now carries 3.51:1 and 3.61:1 against the
+panel, the three dashed borders and every field use it, and `--hairline-strong`
+is left doing only what it can do: separating structure that nobody has to
+identify. The numbers above come from the same run as the fixed build.
+
+### The packaged window found a real bug
+
+Driving the release binary instead of the dev server paid for itself
+immediately: opening Replayer in the packaged app blanked the entire window. The
+dev mock hands the tab `recordHotkey` and `replayHotkey`, but the engine's
+`ReplayView` and `RecordingView` had no `rename_all`, so they arrived as
+`record_hotkey` and `replay_hotkey`. The tab read `.trim()` off `undefined` and
+React tore the tree down. The Replayer had never worked outside the mock. Both
+views now serialize camelCase like `ReplayState` already did.
+
+That is the argument for evidence from the artifact: a mock and an engine that
+disagree will always agree with themselves.
+
+### Evidence from the packaged window
+
+`docs/ui-pass/packaged-*.png` is the release binary, not the dev server: the
+window produced by `tauri build --no-bundle`, driven over the DevTools protocol
+on its own WebView2, captured with `Page.captureScreenshot` from that webview.
+Reproduce with `src-tauri/target/release/crossup.exe` launched under
+`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` and
+`node scripts/ui-shot.mjs`.
+
 ## What I could not check
 
-- Contrast was judged from the token values, not measured with a contrast tool.
-  The third ink step at 10px is the tightest pair in the ladder.
-- Screenshots come from the same React build served at `localhost:1420`, not from
-  the packaged installer. The installer is verified to build, carry its signature
-  and appear in `latest.json`, but the window in the pictures is the preview
-  shell, which is why the header reads "Preview".
+- The contrast numbers are one preset. Ten presets share the same derivation, but
+  a hand-picked hue and saturation can still land `--flag` or `--moss` near the
+  floor, and the palette engine has no ratio guard. It should grow one.
+- The tab strip, the update banner and the error row were not measured in every
+  state; the numbers cover the five tabs, the settings and appearance dialogs in
+  both modes.
+- The packaged pictures are one window size. The 836px evidence from earlier
+  rounds still came from the preview shell and is labelled as such.
 - Focus trapping and focus return in the Interior `Modal` were not exercised.
 - Reduced motion is respected in the CSS and the tab strip; it was not run under
   an OS setting that reports the preference.
