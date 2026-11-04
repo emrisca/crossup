@@ -186,6 +186,9 @@ function Shell() {
     view.macros_enabled,
     view.replay_enabled,
   ].filter((on) => !on).length;
+  // One strip, one answer: a shortcut the engine could not take, and anything
+  // asked for that could not happen, printed together and dismissable as a set.
+  const notices = [...(activity?.hotkeyErrors ?? []), ...(activity?.alerts ?? [])];
   const runningClicker = activity?.running === "clicker";
   const runningTyper = activity?.running === "typer";
   const runningReplay = activity?.running === "replay";
@@ -269,11 +272,25 @@ function Shell() {
           nothing is the same failure as a replay that does nothing and says
           nothing. Each tab used to print its own copy in a corner, so both were
           invisible on the tab that set them. */}
-      {[...(activity?.hotkeyErrors ?? []), ...(activity?.alerts ?? [])].map((message) => (
-        <p className="hb__warn" key={message} role="status">
-          {message}
-        </p>
-      ))}
+      {notices.length > 0 && (
+        <div className="hb__notices" role="status">
+          <div className="hb__notices-list">
+            {notices.map((message) => (
+              <p className="hb__warn" key={message}>
+                {message}
+              </p>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="hb__mini"
+            title="Dismiss"
+            onClick={() => void run("dismiss_notices")}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <Tabs
         items={TOOLS}

@@ -573,26 +573,31 @@ pub fn replay_shortcut(app: &AppHandle, runtime: &RuntimeState) {
         let shared = state.lock().unwrap();
         shared.settings.clone()
     };
+    request(runtime, &settings);
+}
+
+/// The one answer to "play something", shared by the chord and the button.
+///
+/// A person pressing the replay key and a person clicking Replay are asking the
+/// same question, so a refusal lands in the same place for both: the strip above
+/// the tabs. The button used to be disabled when nothing was selected, which made
+/// the tab silent about the one thing it could have explained.
+pub fn request(runtime: &RuntimeState, settings: &Settings) {
     if !settings.replay_enabled {
         note("the replayer is switched off".to_string());
-        runtime.alert("the replay shortcut is set, but the replayer is switched off");
+        runtime.alert("the replayer is switched off, so nothing can replay");
         return;
     }
-    // A replay with nothing chosen used to say so in a note inside the tab, which
-    // is not where somebody pressing a key is looking. It says so where a refused
-    // shortcut is printed instead.
     if !settings
         .replay
         .recordings
         .iter()
         .any(|entry| entry.id == settings.replay.selected)
     {
-        runtime.alert(
-            "a replay needs a recording: record one, then pick it on the Replayer tab",
-        );
+        runtime.alert("a replay needs a recording: record one, then pick it on the Replayer tab");
         return;
     }
-    if let Err(error) = start(runtime, &settings, None) {
+    if let Err(error) = start(runtime, settings, None) {
         runtime.alert(format!("the replay could not start: {error}"));
         note(error);
     }
@@ -723,7 +728,11 @@ pub fn start_replay(
     if !settings.replay_enabled {
         return Err("the replayer is switched off".to_string());
     }
-    start(&runtime, &settings, id.as_deref())?;
+    match id.as_deref() {
+        Some(id) => start(&runtime, &settings, Some(id))?,
+        // Nothing chosen: the same answer the chord gives, in the same strip.
+        None => request(&runtime, &settings),
+    }
     Ok(view())
 }
 
@@ -789,5 +798,35 @@ mod capture_tests {
         capture_key(0x2d, false);
         let typed = with(|state| state.draft.take().map(|draft| draft.events.len()));
         assert_eq!(typed, Some(2));
+    }
+}
+
+#[cfg(test)]
+mod request_tests {
+    use super::*;
+    use crate::runtime::Runtime;
+
+    #[test]
+    fn a_replay_with_nothing_chosen_says_so_and_starts_nothing() {
+        let runtime: RuntimeState = std::sync::Arc::new(Runtime::new());
+        let settings = Settings::default();
+        request(&runtime, &settings);
+        assert_eq!(runtime.running(), None, "something started");
+        let alerts = runtime.view().alerts;
+        assert!(
+            alerts.iter().any(|message| message.contains("needs a recording")),
+            "{alerts:?}"
+        );
+    }
+
+    #[test]
+    fn a_dismissed_notice_is_gone_until_the_next_refusal() {
+        let runtime: RuntimeState = std::sync::Arc::new(Runtime::new());
+        request(&runtime, &Settings::default());
+        assert!(!runtime.view().alerts.is_empty());
+        runtime.dismiss();
+        assert!(runtime.view().alerts.is_empty(), "the notice survived a dismiss");
+        request(&runtime, &Settings::default());
+        assert!(!runtime.view().alerts.is_empty(), "a new refusal stayed hidden");
     }
 }

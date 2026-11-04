@@ -343,6 +343,14 @@ fn stop_activity(runtime: State<'_, RuntimeState>) -> bool {
     runtime.stop()
 }
 
+/// Clear the strip above the tabs. A refusal is a message, not a setting:
+/// dismissing it changes nothing except what is on screen.
+#[tauri::command]
+fn dismiss_notices(state: State<'_, SharedState>, runtime: State<'_, RuntimeState>) -> View {
+    runtime.dismiss();
+    snapshot(state)
+}
+
 /// Add or replace a macro, then re-register the shortcuts so its new one is
 /// live straight away.
 #[tauri::command]
@@ -1205,6 +1213,7 @@ pub fn run() {
             save_clicker,
             start_clicker,
             stop_activity,
+            dismiss_notices,
             save_macro,
             delete_macro,
             run_macro,

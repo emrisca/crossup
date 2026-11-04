@@ -353,6 +353,66 @@ guard opened, and the shipped build keeps it closed.
 Scores unchanged: this round is behaviour, not design. Typography 9.5, contrast
 9.5, overall 9.5.
 
+## Round nine, shipped in 0.2.8
+
+The shortcuts pass set a rule: a request that cannot be answered is refused once,
+in the strip above the tabs. Two places still broke it.
+
+**The Replay button refused before it was asked.** On the Replayer tab it was
+`disabled` whenever nothing was chosen, so that surface could never produce the
+message the chord produces. The same request was answered two ways depending on
+whether it arrived from a mouse or a key, and the mouse path answered with
+silence. Both now go through one Rust entry point, `replay::request`, which pushes
+the same alert and returns `Ok`, so the button stays enabled and explains itself in
+the strip. Measured on the packaged build: clicking Replay with no recording
+produced exactly "a replay needs a recording: record one, then pick it on the
+Replayer tab", and so did `Ctrl+Alt+P` a moment later. Two tests pin the shared
+path, so the two halves cannot drift apart again.
+
+**A refusal could not be dismissed.** The strip only cleared when something
+started or the app restarted, so a message read ten minutes ago sat over the
+content. It now ends in a Dismiss control that clears alerts and refused
+shortcuts together through `dismiss_notices`; the next refused request puts its
+message back. Measured: after Dismiss the strip is empty and `activity.alerts` is
+`[]`; pressing the chord again restored the same line, and it dismissed again.
+
+Because the strip can be dismissed, the button and the chord now behave as one
+surface: same words, same place, same way out.
+
+### Measured on the packaged build
+
+| What was pressed | Before | Now |
+| --- | --- | --- |
+| Replay button, nothing chosen | disabled; no message anywhere | strip: "a replay needs a recording…" |
+| `Ctrl+Alt+P`, nothing chosen | strip message, no way to clear it | same message, cleared by Dismiss |
+| Dismiss | — | strip empty; the next refusal comes back |
+| launch from `Mouse5` + empty replayer slots | healed to Ctrl+Alt+T / R / P | unchanged: healed, no shortcut errors |
+| `Ctrl+Alt+T` into a scratch window, 2 s countdown | clock at zero through the countdown | 0, 0, 0 through the countdown, 0.11 after 2 characters, 2.63 frozen |
+| `Ctrl+Alt+R`, type `xyz`, `Ctrl+Alt+R`, save | 6 events captured | 6 events, saved and selected |
+| `Ctrl+Alt+P` into an emptied window | `xyz` typed back | `xyz` typed back, 6 of 6 played |
+
+![The refusal in the strip, with Dismiss](docs/ui-pass/packaged-strip-alert.png)
+![The same window after Dismiss](docs/ui-pass/packaged-strip-dismissed.png)
+
+The clock numbers are the typer's own reading (`typer_status`), which is the one
+the Typer tab shows; the footer's `elapsedSecs` belongs to a clicker run and stays
+at zero for every other tool.
+
+The recorder still refuses injected input, which is what stops a replay from
+recording itself, so capturing the live `xyz` used an evidence-only build with
+that guard opened. The build that ships keeps it closed: `capture_injected` is
+gone from the tree.
+
+### Score against 9 / 10
+
+Met, at **9.5 / 10** overall. The criteria are unchanged because this round is
+behaviour rather than surface: typography 9.5, contrast 9.5, spacing 9.5, states
+9.5, hierarchy 9.5, reversibility 9.5, copy 9.5, motion 9. What moved is the
+consistency of the promise the pass made: every refusal now appears in one place
+and leaves when asked, whichever control asked for it. It is not a ten for the
+reasons listed under "What I could not check" — the mono subtitle, motion states
+that were not measured, and a palette engine with no contrast guard.
+
 ## What I could not check
 
 - The contrast numbers are one preset. Ten presets share the same derivation, but

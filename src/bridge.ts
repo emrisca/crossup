@@ -1138,6 +1138,8 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
         },
       };
       break;
+    case "dismiss_notices":
+      break;
     case "typer_status":
       return structuredClone(mockTyper) as T;
     case "typer_plan":

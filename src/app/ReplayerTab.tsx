@@ -149,6 +149,9 @@ export function ReplayerTab({
               Record
             </PressDepth>
           )}
+          {/* Enabled with nothing chosen: clicking it is the same request as
+              pressing the chord, and it gets the same answer in the strip
+              rather than a button that cannot explain itself. */}
           {playing ? (
             <PressDepth depth={3} tilt={5} className="hb__press--flag" onClick={toggleReplay}>
               Stop replay
@@ -157,9 +160,9 @@ export function ReplayerTab({
             <PressDepth
               depth={3}
               tilt={5}
-              disabled={!view.replay_enabled || !chosen || busy}
+              disabled={!view.replay_enabled || busy}
               onClick={() => {
-                if (view.replay_enabled && chosen && !busy) toggleReplay();
+                if (view.replay_enabled && !busy) toggleReplay();
               }}
             >
               Replay

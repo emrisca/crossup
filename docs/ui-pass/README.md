@@ -225,6 +225,28 @@ untouched. Bulk Clear buttons are resets and carry no undo; the review says why.
 The sticky header was re-measured on this build (`position: sticky`, header and
 page both at 150 at full scroll), so the round-three evidence still stands.
 
+## Round nine: one request, one answer
+
+| The refusal, in the strip | After Dismiss |
+| --- | --- |
+| ![Replay refusal with Dismiss](packaged-strip-alert.png) | ![The same window, strip cleared](packaged-strip-dismissed.png) |
+
+The Replayer tab's Replay button used to be disabled with nothing selected, so
+the tab could not produce the message the chord produces: the same request was
+answered with words from the keyboard and with silence from the mouse. The button
+is enabled now and both routes call one Rust function, `replay::request`, which
+pushes the same line into the strip. Refusals can be dismissed as well — one
+control clears alerts and refused shortcuts — and the next refusal puts its
+message back.
+
+Measured on the packaged build launched from the legacy settings file: button and
+chord both read "a replay needs a recording: record one, then pick it on the
+Replayer tab", Dismiss emptied the strip twice, the file healed to
+`Ctrl+Alt+T` / `Ctrl+Alt+R` / `Ctrl+Alt+P` with no errors, the typer chord typed 43
+characters while the clock read 0 through a two-second countdown, 0.11 after two
+characters and 2.63 when frozen, and a recorded `xyz` replayed 6 of 6 events into
+an emptied window.
+
 ## Criteria, scored
 
 | Criterion | Score | Evidence |

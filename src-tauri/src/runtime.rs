@@ -145,6 +145,14 @@ impl Runtime {
         }
     }
 
+    /// Clear the strip: refusals the person has read, not settings. Anything
+    /// asked for again after this is a fresh answer.
+    pub fn dismiss(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.alerts.clear();
+        state.hotkey_errors.clear();
+    }
+
     /// Claim the desktop for one run, or explain who has it.
     pub(crate) fn claim(&self, label: &str) -> Result<Arc<AtomicBool>, String> {
         let mut state = self.state.lock().unwrap();
