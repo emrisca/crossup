@@ -1,0 +1,51 @@
+name: Release
+
+# Crossup is a Windows tool: the remapper, the clicker and the macro runner all
+# go through SendInput and a low-level keyboard hook, so the installer is built on
+# Windows and nowhere else. Pushing a tag whose version matches
+# src-tauri/tauri.conf.json is the whole trigger; tauri-action interpolates
+# v__VERSION__ from the config, so a drifted tag publishes a release no installed
+# copy will ever offer.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: npm ci
+
+      - name: Type check the window
+        run: npm run typecheck
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Crossup v__VERSION__
+          releaseBody: "Download the installer below. Existing installs offer this version from the app, and nothing installs until Update now is pressed. A running clicker or macro stops when the installer takes over."
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          args: --bundles nsis

@@ -23,6 +23,10 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 # Only for the "choose the executable" button in settings, and only from Rust.
 tauri-plugin-dialog = "2"
+# Self-update. The release workflow signs each installer with the key whose
+# public half sits in tauri.conf.json, and this refuses anything that signature
+# does not cover.
+tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

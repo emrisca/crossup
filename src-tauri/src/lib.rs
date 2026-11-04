@@ -19,6 +19,7 @@ mod mouse_hotkeys;
 mod picker;
 mod runtime;
 mod socd;
+mod update;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -752,6 +753,9 @@ pub fn run() {
         // Used from Rust only, to let the user point the sign-in entry at a copy
         // of the app rather than type its path.
         .plugin(tauri_plugin_dialog::init())
+        // The release endpoint, checked after launch and every six hours. The
+        // state the banner reads lives in `update`.
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let (settings, notes) = load(app.handle());
             let shared: SharedState = Arc::new(Mutex::new(Shared::new(settings.clone())));
@@ -811,6 +815,11 @@ pub fn run() {
             })
             .build(app)?;
 
+            // Registered last, because the first check waits twenty seconds and
+            // never blocks the tray coming up.
+            app.manage(update::UpdateHolder::new());
+            update::watch(app.handle().clone());
+
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -864,7 +873,10 @@ pub fn run() {
             pick_region,
             picker_context,
             picker_finish,
-            picker_cancel
+            picker_cancel,
+            update::update_state,
+            update::update_check,
+            update::update_install
         ])
         .run(tauri::generate_context!())
         .expect("error while running Hitboxer");

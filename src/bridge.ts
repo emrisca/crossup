@@ -226,6 +226,33 @@ export type View = {
   autostart: AutostartView;
 };
 
+// ── updates ──────────────────────────────────────────────────────
+
+/**
+ * An update as the shell reports it: what is waiting, and how far a download
+ * got. The status is one of `idle`, `checking`, `available`, `downloading`,
+ * `installing`, `restarting`, `upToDate` or `error`.
+ */
+export type UpdateView = {
+  currentVersion: string;
+  status: string;
+  version: string | null;
+  notes: string | null;
+  downloaded: number;
+  total: number | null;
+  error: string | null;
+};
+
+/** What the updater last found. Polled; the shell changes it on its own clock. */
+export function updateState(): Promise<UpdateView> {
+  return call<UpdateView>("update_state");
+}
+
+/** Download, verify and install; the shell restarts itself when it lands. */
+export function updateInstall(): Promise<void> {
+  return call<void>("update_install");
+}
+
 // ── drawing on screen ──────────────────────────────────────────────
 
 /** A rectangle in screen pixels. */
@@ -925,6 +952,20 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
         )
         .join("\n") as T;
     case "import_socd":
+      break;
+    case "update_state":
+      // The browser stand-in has no installer behind it, so nothing is ever
+      // offered here.
+      return {
+        currentVersion: "0.1.0",
+        status: "upToDate",
+        version: null,
+        notes: null,
+        downloaded: 0,
+        total: null,
+        error: null,
+      } as T;
+    case "update_install":
       break;
     case "activity":
     case "save_clicker":

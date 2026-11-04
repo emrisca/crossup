@@ -132,6 +132,44 @@ cd src-tauri && cargo test   # 115 tests: SOCD modes, click grid, failsafes, mac
 npx tsc --noEmit             # frontend types
 ```
 
+## Updates
+
+Crossup checks `https://github.com/emrisca/crossup/releases/latest/download/latest.json`
+twenty seconds after launch and every six hours while it is running. When a newer
+version is waiting, a row appears under the header with that version and the
+first line of its notes. **Update now** downloads, verifies the signature and
+installs it; **Later** hides that version until the next launch. Nothing installs
+without the click, and a failed check is silent, because a machine with no
+network is not a machine with a problem.
+
+The keypair already exists: `.secrets/crossup-updater.key` is the private half,
+which Git ignores, and its public half is in `plugins.updater.pubkey` in
+`src-tauri/tauri.conf.json`. That key has no password, so a local release build
+needs only the path:
+
+```bash
+TAURI_SIGNING_PRIVATE_KEY=.secrets/crossup-updater.key
+npm run tauri build
+```
+
+Paste the contents of `.secrets/crossup-updater.key` into the repository secret
+`TAURI_SIGNING_PRIVATE_KEY`. A key generated without a password needs no
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`; set that secret only if the key is ever
+replaced with one that has a password. Pushing a tag such as `v0.1.1` runs
+`.github/workflows/release.yml` on a Windows runner: it installs, type checks,
+builds the NSIS installer, writes `latest.json` beside it and publishes both. A
+clicker or macro that is running stops when the installer takes over, which is
+what the restart would have done anyway.
+
+The installed app reads `latest.json` without a token, so the repository has to
+be public. A private one turns every update check into a 404.
+
+A version bump is three files and one tag: `package.json`,
+`src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` all say the same number,
+and the tag is `v` plus that number. `tauri-action` interpolates `v__VERSION__`
+from the config, so a tag that drifts publishes a release no installed copy will
+ever be offered.
+
 ## Using it
 
 ### Remapper

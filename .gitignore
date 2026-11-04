@@ -3,3 +3,7 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 .DS_Store
+
+# The updater signing key. The public half is in tauri.conf.json; the private
+# half is a password-manager secret and never a commit.
+.secrets/

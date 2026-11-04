@@ -16,6 +16,7 @@ import { AppearanceDialog } from "./AppearanceDialog";
 import { AddProfileDialog, MappingDialog, SettingsDialog, SocdDialog } from "./Dialogs";
 import { MacrosTab } from "./MacrosTab";
 import { RemapperTab } from "./RemapperTab";
+import { UpdateBanner } from "./UpdateBanner";
 
 /** The three tools, in the order they sit in the tab strip. */
 const TOOLS = [
@@ -211,6 +212,10 @@ function Shell() {
           </svg>
         </button>
       </header>
+
+      {/* Only while a newer release is waiting: one row, and Later hides it for
+          the rest of the run. */}
+      <UpdateBanner />
 
       <Tabs
         items={TOOLS}
