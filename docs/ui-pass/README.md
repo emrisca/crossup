@@ -100,6 +100,19 @@ the selection that went with it, so a recording returns to its place and stays
 selected. The window never holds a recording's events, which is why the restore
 lives in Rust rather than in the tab.
 
+## Round six: the block palette stays whole
+
+![Packaged window, macro builder scrolled with the palette pinned](packaged-palette.png)
+
+Scrolled to the middle of a macro, the palette used to slide behind the title
+row: it pinned at the top of the scrollport at `z-index: 2` while the header
+pinned at the same edge at `z-index: 5`. The chips were still there and could not
+be pressed. The palette now pins below the measured height of the header
+(`--head-h`), so both sticky layers stack.
+
+Measured at a 900px window scrolled to 420: palette 191 to 302, header bottom
+191, gap 0, and a hit test two pixels into the first chip row returns `.pal`.
+
 ## Round five: type and measured contrast
 
 These pictures are the packaged window, not the dev server: the binary from

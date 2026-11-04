@@ -458,7 +458,10 @@ button.hb__row { cursor: pointer; }
    adding one more meant scrolling back up first. It sits over the builder's own
    padding so nothing shows through above it. */
 .pal {
-  position: sticky; top: 0; z-index: 2;
+  /* Pinned below the title row, not at the top of the scrollport: the header is
+     sticky at 0 with a higher z-index, so pinning at 0 put the first rows of the
+     palette behind it. `--head-h` is measured by the tab. */
+  position: sticky; top: var(--head-h, 0px); z-index: 2;
   margin: -10px -10px 0; padding: 10px 10px 8px;
   background: var(--sub); border-radius: 14px 14px 0 0;
 }

@@ -26,7 +26,7 @@ Each line is judged against the running app, not the intent. Evidence lives in
 | Contrast | 9.5 / 10 | Measured in the running window by reading rendered pixels and compositing every ancestor background, in both modes, across all five tabs and the Appearance dialog. The weakest text pair is 5.20:1 (success on panel, light); the weakest body pair is 8.23:1. Control edges were the one real failure at 1.63 to 2.35:1 and now sit at 3.51 to 3.68:1. |
 | States | 9.5 / 10 | Empty states name the next action (mappings, recordings, macros, zones), the boot frame is a skeleton shaped like the window, errors land in a `role="status"` row, and disabled press buttons drop to 50 percent. Focus is a 2px accent ring from `styles.css`, because the controls are native elements rather than divs. |
 | Motion | 9 / 10 | Press depth, panel lift and the undo bar slide, all under 200ms. Reduced motion is handled in the tab strip through `useReducedMotion` and in the undo bar through a `prefers-reduced-motion` block. |
-| Hierarchy | 9.5 / 10 | One lead surface per tab, quiet groups divided by hairlines everywhere else, and a title row that stays in view so the tool and its live state never scroll away. |
+| Hierarchy | 9.5 / 10 | One lead surface per tab, quiet groups divided by hairlines everywhere else, and a title row that stays in view so the tool and its live state never scroll away. The block palette pins below that row rather than behind it, so the two sticky layers stack instead of fighting. |
 | Reversibility | 9.5 / 10 | Every row delete is immediate and undoable for twelve seconds, with Ctrl+Z as the same action: recording, macro, mapping, click point, zone, program entry and macro block. Undo restores the item, its position and the view around it, so a macro comes back open and a recording comes back selected. Bulk Clear buttons are resets and are documented as such. |
 | Copy | 9.5 / 10 | The unslop pass removed colon connectors, passive voice, personified code and clipped fragments across 86 strings. Remaining middle dots join two short values only. |
 
@@ -248,6 +248,27 @@ on its own WebView2, captured with `Page.captureScreenshot` from that webview.
 Reproduce with `src-tauri/target/release/crossup.exe` launched under
 `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` and
 `node scripts/ui-shot.mjs`.
+
+## Round six, shipped in 0.2.5
+
+The block palette was reachable and unusable. It pins so that adding a block
+never means scrolling back up, but it pinned at the top of the page's scrollport
+(`top: 0`) at `z-index: 2`, while the title row pins at the same edge at
+`z-index: 5`. Scrolling the builder brought the palette up behind the header,
+which painted over its first rows: measured at a 900px window, the palette sat at
+y=191 with a height of 111 while the header covered 120 to 191, so the label and
+the first chip row were underneath it. The chips were not missing, they were
+buried.
+
+The palette now pins below the title row instead of under it. The tab measures
+its own header with a `ResizeObserver` and publishes the height as `--head-h`,
+which `.pal` uses as its `top`; a hard-coded offset would drift, because the
+title is an input that grows when names wrap or the window narrows.
+
+Verified by hit-testing rather than by eye: at a 900px window scrolled to 420,
+`getBoundingClientRect` puts the palette at 191 to 302 with the header's bottom
+at 191, a gap of zero, and `elementFromPoint` two pixels into the first chip row
+returns `.pal` rather than the header. All eight chips respond.
 
 ## What I could not check
 

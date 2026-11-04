@@ -81,6 +81,20 @@ for (let i = 0; i < 40; i += 1) {
 }
 await wait(800);
 
+// The previous run may have left the app in light mode; every shot but the last
+// is meant to be the default dark preset.
+const pickMode = async (label) => {
+  await evaluate(`(() => { const b = document.querySelector('button[aria-label="Open settings"]'); if (b) b.click(); })()`);
+  await wait(450);
+  await evaluate(`(() => { const b = [...document.querySelectorAll('button')].find((x) => x.textContent.trim().startsWith('Appearance')); if (b) b.click(); })()`);
+  await wait(450);
+  await evaluate(`(() => { const r = [...document.querySelectorAll('[role=radio]')].find((x) => x.textContent.trim() === ${JSON.stringify(label)}); if (r) r.click(); })()`);
+  await wait(500);
+  await evaluate(`(() => { const d = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Done'); if (d) d.click(); })()`);
+  await wait(350);
+};
+await pickMode("Dark");
+
 // The tab strip renders its label twice for assistive technology, so the text
 // is not a reliable handle. Order is fixed: Remapper, Auto clicker, Typer,
 // Macros, Replayer.
@@ -113,6 +127,45 @@ for (const [index, name] of [
   await openTab(index);
   await shoot(name);
 }
+
+// The macro builder scrolled down: the palette has to stay whole under the
+// sticky title row instead of sliding behind it. An empty macro has nothing to
+// scroll, so add a few blocks first and take them away again afterwards; the
+// app writes what it shows, so the shot must not leave six blocks behind.
+await openTab(3);
+await evaluate(`(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const chips = [...document.querySelectorAll('.pal__item')];
+  for (const i of [2, 5, 6, 2, 5, 6]) {
+    const chip = [...document.querySelectorAll('.pal__item')][i];
+    if (!chip) throw new Error('no palette chip at ' + i);
+    chip.click();
+    await sleep(140);
+  }
+})()`);
+await wait(500);
+const scrolled = await evaluate(`(() => {
+  const page = document.querySelector('.hb__page');
+  page.scrollTop = 420;
+  return { scrollTop: page.scrollTop, max: page.scrollHeight - page.clientHeight };
+})()`);
+console.log("scrolled", JSON.stringify(scrolled));
+await wait(500);
+await shoot("packaged-palette");
+
+const cleaned = await evaluate(`(async () => {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  for (let i = 0; i < 12; i += 1) {
+    const remove = [...document.querySelectorAll('button[aria-label]')].find((b) => b.getAttribute('aria-label').startsWith('Remove'));
+    if (!remove) break;
+    remove.click();
+    await sleep(150);
+  }
+  const page = document.querySelector('.hb__page');
+  page.scrollTop = 0;
+  return document.querySelector('.hb__sub')?.textContent ?? '';
+})()`);
+console.log("after cleanup:", cleaned);
 
 await openTab(0);
 await evaluate(`(() => {

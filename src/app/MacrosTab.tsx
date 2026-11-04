@@ -155,6 +155,26 @@ export function MacrosTab({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(view.macros[0]?.id ?? null);
   const [draft, setDraft] = useState<Macro | null>(null);
+
+  const pageRef = useRef<HTMLElement | null>(null);
+  const headRef = useRef<HTMLDivElement | null>(null);
+
+  /* The palette pins under the title row rather than under the top of the page.
+     Without this it pinned at the scrollport's top edge and the header, which
+     paints above it, covered its first rows: the block buttons were there and
+     impossible to press. The offset is measured, because the title field grows
+     when the window is narrow and a hard-coded height would drift. */
+  useEffect(() => {
+    const page = pageRef.current;
+    const head = headRef.current;
+    if (!page || !head) return;
+    const sync = () => page.style.setProperty("--head-h", `${head.offsetHeight}px`);
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(head);
+    return () => observer.disconnect();
+  }, [draft]);
+
   const [processes, setProcesses] = useState<string[]>([]);
   const [newOpen, setNewOpen] = useState(false);
   // Which block is waiting for a spot on the desktop, as a path into the tree,
@@ -331,10 +351,10 @@ export function MacrosTab({
         </div>
       </aside>
 
-      <section className="hb__page">
+      <section className="hb__page" ref={pageRef}>
         {draft ? (
           <>
-            <div className="hb__head">
+            <div className="hb__head" ref={headRef}>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <input
                   className="hb__field hb__field--title"
