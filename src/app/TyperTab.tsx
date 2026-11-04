@@ -1,0 +1,421 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { PressDepth } from "@/components/interior/press-depth";
+import {
+  call,
+  type TyperPlan,
+  type TyperSettings,
+  type TyperStatusView,
+  type View,
+  typerPause,
+  typerResume,
+  typerStop,
+} from "@/bridge";
+import { Card, Line } from "./AutoClickerTab";
+import { Switch } from "./Dialogs";
+import { HotkeyField } from "./HotkeyField";
+import { NumberField } from "./NumberField";
+
+const SAMPLE =
+  "We shipped the update on a Friday, which everyone says not to do. It broke the " +
+  "one thing nobody tested, and the release notes still claimed it worked. Next " +
+  "time the checklist runs before the tag, not after it.";
+
+const LABELS: Record<TyperStatusView["status"], string> = {
+  idle: "Ready",
+  typing: "Typing",
+  paused: "Paused",
+  done: "Finished",
+  stopped: "Stopped",
+  unfocused: "Stopped: the window changed",
+};
+
+/** A pace written the way the clicker writes one: per second, and the gap. */
+const pace = (cps: number): string =>
+  `${cps.toFixed(cps < 10 ? 1 : 0)} keys a second · one every ${Math.round(1_000 / cps)} ms`;
+
+/**
+ * The typer: a draft, a pace, and a run that types it into whichever window is
+ * in front.
+ *
+ * The settings live on the Rust side; this is the editing copy, saved as it is
+ * changed. What the run is doing is polled rather than pushed, the same way the
+ * clicker's counters are, so the tab is one loop reading one answer.
+ */
+export function TyperTab({
+  view,
+  run,
+  onError,
+}: {
+  view: View;
+  run: (command: string, args?: Record<string, unknown>) => Promise<void>;
+  onError: (message: string | null) => void;
+}) {
+  const [draft, setDraft] = useState<TyperSettings>(view.typer);
+  const [plan, setPlan] = useState<TyperPlan | null>(null);
+  const [status, setStatus] = useState<TyperStatusView | null>(null);
+  const sent = useRef(JSON.stringify(view.typer));
+  const timer = useRef<number | null>(null);
+
+  // The settings live on the Rust side; this draft is the editing copy. If they
+  // change somewhere else, adopt the new ones rather than fight over them.
+  useEffect(() => {
+    const incoming = JSON.stringify(view.typer);
+    if (incoming === sent.current) return;
+    sent.current = incoming;
+    setDraft(view.typer);
+  }, [view.typer]);
+
+  const update = useCallback(
+    (patch: Partial<TyperSettings>) => {
+      const next = { ...draft, ...patch };
+      setDraft(next);
+      if (timer.current) window.clearTimeout(timer.current);
+      // A paragraph is a lot of text to write per keystroke, and a slider is a
+      // stream of changes; one write after it settles is enough.
+      timer.current = window.setTimeout(() => {
+        sent.current = JSON.stringify(next);
+        void run("save_typer", { typer: next });
+      }, 350);
+    },
+    [draft, run],
+  );
+
+  useEffect(() => {
+    let live = true;
+    const tick = async () => {
+      try {
+        const next = await call<TyperStatusView>("typer_status");
+        if (live) setStatus(next);
+      } catch {
+        // A preview without the engine simply has nothing to report.
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 250);
+    return () => {
+      live = false;
+      window.clearInterval(id);
+    };
+  }, []);
+
+  // The estimate comes from Rust, so the number on screen is the pace the
+  // driver will actually keep rather than a second opinion.
+  useEffect(() => {
+    if (!draft.text.trim()) {
+      setPlan(null);
+      return;
+    }
+    const id = window.setTimeout(() => {
+      void call<TyperPlan>("typer_plan", { text: draft.text, settings: draft })
+        .then(setPlan)
+        .catch(() => setPlan(null));
+    }, 250);
+    return () => window.clearTimeout(id);
+  }, [draft]);
+
+  const running = status?.status === "typing" || status?.status === "paused";
+  const paused = status?.status === "paused";
+  const percent =
+    status && status.total > 0
+      ? Math.min(100, Math.round((status.typed / status.total) * 100))
+      : 0;
+  // Words a minute as it goes, counted the way a typing test counts: five
+  // characters to a word, from the wall clock.
+  const wpm =
+    status && status.typed > 0 && status.elapsedSecs > 0.4
+      ? Math.round(status.typed / 5 / (status.elapsedSecs / 60))
+      : 0;
+
+  /** Starting writes first: the run takes one copy of the settings as it begins. */
+  const start = () => {
+    onError(null);
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    sent.current = JSON.stringify(draft);
+    void run("save_typer", { typer: draft }).then(() => run("start_typer"));
+  };
+  const stop = () => {
+    void typerStop()
+      .then(setStatus)
+      .catch(() => undefined);
+  };
+
+  return (
+    <div className="hb__split">
+      <section className="hb__page">
+        <div className="hb__head">
+          <div style={{ minWidth: 0 }}>
+            <h1 className="hb__title">Typer</h1>
+            <p className="hb__sub">
+              {plan
+                ? `${pace(plan.cps)} · ${Math.round(plan.totalMs / 1_000)}s a run`
+                : "paste what you want typed"}
+            </p>
+          </div>
+          <span className="hb__spacer" />
+          <span className={`hb__pill${running ? " hb__pill--on" : ""}`}>
+            <span
+              className={`hb__gear-dot${running ? "" : " hb__gear-dot--off"}`}
+              aria-hidden="true"
+            />
+            {status ? LABELS[status.status] : "Ready"}
+          </span>
+        </div>
+
+        <div className="hb__actions">
+          {running ? (
+            <PressDepth depth={3} tilt={5} className="hb__press--flag" onClick={stop}>
+              Stop
+            </PressDepth>
+          ) : (
+            <PressDepth
+              depth={3}
+              tilt={5}
+              disabled={!view.typer_enabled || !draft.text.trim()}
+              onClick={() => {
+                if (view.typer_enabled && draft.text.trim()) start();
+              }}
+            >
+              Start typing
+            </PressDepth>
+          )}
+          <span className="hb__field-label">Typer</span>
+          <Switch
+            checked={view.typer_enabled}
+            label="Typer enabled"
+            onChange={(enabled) => run("set_tool_enabled", { tool: "typer", enabled })}
+          />
+          <HotkeyField
+            label="Start shortcut"
+            note="A key combination that starts the draft, or stops a run that is going. A mouse button cannot type, so this one is keyboard only."
+            value={draft.hotkey}
+            onChange={(hotkey) => update({ hotkey })}
+          />
+        </div>
+
+        {status?.status === "unfocused" && (
+          <p className="hb__warn">
+            The window in front changed while this run was typing, so it stopped where
+            it was rather than typing the rest into somewhere else.
+          </p>
+        )}
+
+        <Card
+          lead
+          title="Text to type"
+          note="Typed one keystroke at a time into whichever window is in front. Enter and Tab are sent as themselves, so paragraphs and indentation arrive as written."
+        >
+          <textarea
+            className="hb__code hb__typer-text"
+            value={draft.text}
+            onChange={(event) => update({ text: event.target.value })}
+            placeholder="Paste or write what should be typed…"
+            aria-label="Text to type"
+            spellCheck
+            readOnly={running}
+          />
+          <div className="hb__row-actions">
+            <span className="hb__field-label">
+              {plan
+                ? `${plan.words} ${plan.words === 1 ? "word" : "words"} · ${plan.chars} keystrokes`
+                : "nothing to type yet"}
+            </span>
+            <span className="hb__spacer" />
+            {!draft.text && (
+              <button type="button" className="hb__mini" onClick={() => update({ text: SAMPLE })}>
+                Use a sample
+              </button>
+            )}
+            <button
+              type="button"
+              className="hb__mini"
+              disabled={running || !draft.text}
+              onClick={() => update({ text: "" })}
+            >
+              Clear
+            </button>
+          </div>
+        </Card>
+
+        <Card
+          title="How it types"
+          note="A run keeps a person's pace rather than a machine's: the gaps carry a little spread, and a mistype is a wrong key, a pause and a backspace rather than a silent correction."
+        >
+          <div className="hb__rows">
+            <Line label="Pace" note="Words a minute, five characters to the word.">
+              <input
+                className="hb__range"
+                type="range"
+                min={20}
+                max={200}
+                step={5}
+                value={draft.wpm}
+                disabled={running || draft.deadlineSecs !== null}
+                aria-label="Pace in words a minute"
+                onChange={(event) => update({ wpm: Number(event.target.value) })}
+              />
+              <span className="hb__readout">{draft.wpm} wpm</span>
+            </Line>
+
+            <Line
+              label="Typo rate"
+              note="The share of characters mistyped and then corrected."
+            >
+              <input
+                className="hb__range"
+                type="range"
+                min={0}
+                max={15}
+                step={1}
+                value={Math.round(draft.typoRate * 100)}
+                disabled={running}
+                aria-label="Typo rate"
+                onChange={(event) => update({ typoRate: Number(event.target.value) / 100 })}
+              />
+              <span className="hb__readout">{Math.round(draft.typoRate * 100)}%</span>
+            </Line>
+
+            <Line
+              label="Finish by"
+              note="Paces the whole run to land the last keystroke on time. It wins over the pace above."
+            >
+              <Switch
+                checked={draft.deadlineSecs !== null}
+                label="Finish by a deadline"
+                onChange={(on) => update({ deadlineSecs: on ? 45 : null })}
+              />
+              {draft.deadlineSecs !== null && (
+                <>
+                  <NumberField
+                    label="Seconds to finish in"
+                    value={draft.deadlineSecs}
+                    onValueChange={(deadlineSecs) => update({ deadlineSecs })}
+                  />
+                  <span className="hb__field-label">seconds</span>
+                </>
+              )}
+            </Line>
+
+            <Line
+              label="Countdown"
+              note="Start is pressed in this window, so the run waits before its first keystroke. That gap is long enough to click into the window being typed into."
+            >
+              <NumberField
+                label="Seconds before the first keystroke"
+                value={draft.countdownSecs}
+                onValueChange={(countdownSecs) => update({ countdownSecs })}
+              />
+              <span className="hb__field-label">seconds</span>
+            </Line>
+          </div>
+          {plan?.clamped && (
+            <p className="hb__warn">
+              That deadline is faster than {pace(plan.cps)}, so the pace is clamped and the
+              run will finish late rather than burst the keystrokes together.
+            </p>
+          )}
+        </Card>
+
+        <p className="hb__card-note hb__tail-note">
+          Text goes out as Unicode keystrokes, so a layout the machine is not set to still
+          receives the characters it can show. There is no clipboard involved: what is
+          typed is what is in the editor.
+        </p>
+      </section>
+
+      <aside className="hb__side">
+        <Card title="This run" tight>
+          <div className="hb__status-row">
+            <span className={`hb__pill${running ? " hb__pill--on" : ""}`}>
+              {status ? LABELS[status.status] : "Ready"}
+            </span>
+            <span className="hb__field-label">
+              {wpm > 0 ? `${wpm} wpm` : plan ? `${plan.cps.toFixed(1)} keys/s` : " "}
+            </span>
+          </div>
+          <div className="hb__meter" aria-hidden="true">
+            <i style={{ width: `${percent}%` }} />
+          </div>
+
+          <Stat
+            value={`${status?.typed ?? 0} / ${status?.total || plan?.chars || 0}`}
+            label="Keystrokes"
+          />
+          <Stat
+            value={status ? `${status.elapsedSecs.toFixed(1)} s` : "0.0 s"}
+            label="Elapsed"
+          />
+          <Stat value={plan ? `${plan.cps.toFixed(1)} /s` : "-"} label="Pace asked" />
+
+          <p className="hb__card-note" style={{ marginTop: 8 }}>
+            {status?.status === "typing" && status.typed === 0
+              ? "Click into the window to type into; the run starts when the countdown ends."
+              : running
+                ? "Typing into the window that was in front when it started."
+                : status?.status === "done"
+                  ? "The whole draft is out."
+                  : status?.status === "unfocused"
+                    ? "Stopped because another window came forward."
+                    : status?.status === "paused"
+                      ? "Paused where it stands. Nothing is typed until it is resumed."
+                      : "Nothing has run yet."}
+          </p>
+
+          {running && (
+            <div className="hb__row-actions">
+              <button
+                type="button"
+                className="hb__mini"
+                onClick={() =>
+                  void (paused ? typerResume() : typerPause())
+                    .then(setStatus)
+                    .catch(() => undefined)
+                }
+              >
+                {paused ? "Resume" : "Pause"}
+              </button>
+              <button type="button" className="hb__mini hb__mini--danger" onClick={stop}>
+                Stop
+              </button>
+            </div>
+          )}
+        </Card>
+
+        <Card title="While it types" tight>
+          <p className="hb__card-note">
+            The window in front is the one that gets the text. If anything else comes
+            forward, this window included, the run stops where it stands instead of
+            typing into the wrong place.
+          </p>
+          <p className="hb__card-note">
+            One run at a time: starting the typer while the clicker or a macro is going is
+            refused with a message, and switching the typer off in its tab stops it.
+          </p>
+          <p className="hb__card-note">
+            Escape ×3 stops the clicker, and the shortcut above stops this; both are read
+            between keystrokes, so a stop lands in about a frame.
+          </p>
+        </Card>
+
+        <button
+          type="button"
+          className="hb__mini hb__mini--wide"
+          onClick={() => update({ wpm: 65, typoRate: 0.04, deadlineSecs: null, countdownSecs: 3 })}
+        >
+          Reset the typer to its defaults
+        </button>
+      </aside>
+    </div>
+  );
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div className="hb__stat">
+      <span className="hb__stat-value">{value}</span>
+      <span className="hb__stat-label">{label}</span>
+    </div>
+  );
+}

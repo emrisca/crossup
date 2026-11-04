@@ -109,6 +109,13 @@ pub struct Settings {
     /// The macro list, defaulted for the same reason.
     #[serde(default)]
     pub macros: Vec<crate::macros::Macro>,
+    /// The typer's draft and pace, defaulted for the same reason.
+    #[serde(default)]
+    pub typer: crate::typer::TyperSettings,
+    /// The replayer's recordings and its two shortcuts, defaulted for the same
+    /// reason.
+    #[serde(default)]
+    pub replay: crate::replay::ReplaySettings,
     /// Whether the auto clicker is on. Each tool owns a switch of its own; this
     /// replaced the one global pause, which could stop the remapper without the
     /// person noticing and then persisted that way.
@@ -117,6 +124,12 @@ pub struct Settings {
     /// Whether the macros are on: their shortcuts, and the Run button.
     #[serde(default = "on_by_default")]
     pub macros_enabled: bool,
+    /// Whether the typer is on: its shortcut, and the Start button.
+    #[serde(default = "on_by_default")]
+    pub typer_enabled: bool,
+    /// Whether the replayer is on: its two shortcuts, and both buttons.
+    #[serde(default = "on_by_default")]
+    pub replay_enabled: bool,
     /// The executable to put in the sign-in entry. Empty means "the copy that
     /// is running", which is right until somebody moves or renames it.
     #[serde(default)]
@@ -137,8 +150,12 @@ impl Default for Settings {
             profiles: vec![Profile::global()],
             clicker: crate::clicker::ClickerSettings::default(),
             macros: Vec::new(),
+            typer: crate::typer::TyperSettings::default(),
+            replay: crate::replay::ReplaySettings::default(),
             clicker_enabled: true,
             macros_enabled: true,
+            typer_enabled: true,
+            replay_enabled: true,
             autostart_exe: String::new(),
         }
     }
@@ -196,6 +213,8 @@ impl Settings {
             profiles: read_section(document, "profiles", defaults.profiles, &mut notes),
             clicker: read_section(document, "clicker", defaults.clicker, &mut notes),
             macros: read_section(document, "macros", defaults.macros, &mut notes),
+            typer: read_section(document, "typer", defaults.typer, &mut notes),
+            replay: read_section(document, "replay", defaults.replay, &mut notes),
             clicker_enabled: read_section(
                 document,
                 "clicker_enabled",
@@ -206,6 +225,18 @@ impl Settings {
                 document,
                 "macros_enabled",
                 defaults.macros_enabled,
+                &mut notes,
+            ),
+            typer_enabled: read_section(
+                document,
+                "typer_enabled",
+                defaults.typer_enabled,
+                &mut notes,
+            ),
+            replay_enabled: read_section(
+                document,
+                "replay_enabled",
+                defaults.replay_enabled,
                 &mut notes,
             ),
             autostart_exe: read_section(

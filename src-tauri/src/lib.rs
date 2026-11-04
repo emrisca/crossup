@@ -17,8 +17,10 @@ mod keys;
 mod macros;
 mod mouse_hotkeys;
 mod picker;
+mod replay;
 mod runtime;
 mod socd;
+mod typer;
 mod update;
 
 use std::path::PathBuf;
@@ -34,6 +36,7 @@ use clicker::ClickerSettings;
 use config::{Mapping, Mode, Profile, Settings};
 use hook::{Shared, SharedState};
 use macros::Macro;
+use typer::TyperSettings;
 use runtime::{ActivityView, Runtime, RuntimeState};
 
 // ── what the UI reads ──────────────────────────────────────────────
@@ -71,6 +74,29 @@ struct MacroView {
     problem: Option<String>,
 }
 
+/// One saved recording, as the list shows it: no events, because the window
+/// never needs them and a long recording is not something to send every frame.
+#[derive(Serialize)]
+struct RecordingView {
+    id: String,
+    name: String,
+    events: usize,
+    duration_ms: u32,
+}
+
+/// The replayer's saved state. What it is *doing* is polled through
+/// `replay::replay_state` instead: a recording changes while the window is
+/// hidden, and has no business being part of a settings snapshot.
+#[derive(Serialize)]
+struct ReplayView {
+    recordings: Vec<RecordingView>,
+    selected: String,
+    record_hotkey: String,
+    replay_hotkey: String,
+    /// `None` is forever.
+    repeat: Option<u32>,
+}
+
 #[derive(Serialize)]
 struct View {
     profiles: Vec<ProfileView>,
@@ -87,6 +113,11 @@ struct View {
     keys: Vec<KeyView>,
     clicker: ClickerSettings,
     macros: Vec<MacroView>,
+    /// The typer's draft and pace, and whether the tool is on.
+    typer: TyperSettings,
+    typer_enabled: bool,
+    replay: ReplayView,
+    replay_enabled: bool,
     /// Read from the registry, not from the settings: the settings only hold
     /// which executable to use, whether the entry exists is Windows' business.
     autostart: autostart::AutostartView,
@@ -108,6 +139,27 @@ fn view_of(shared: &Shared) -> View {
                 definition: definition.clone(),
             })
             .collect(),
+        typer: shared.settings.typer.clone(),
+        typer_enabled: shared.settings.typer_enabled,
+        replay: ReplayView {
+            recordings: shared
+                .settings
+                .replay
+                .recordings
+                .iter()
+                .map(|recording| RecordingView {
+                    id: recording.id.clone(),
+                    name: recording.name.clone(),
+                    events: recording.events.len(),
+                    duration_ms: recording.duration_ms,
+                })
+                .collect(),
+            selected: shared.settings.replay.selected.clone(),
+            record_hotkey: shared.settings.replay.record_hotkey.clone(),
+            replay_hotkey: shared.settings.replay.replay_hotkey.clone(),
+            repeat: shared.settings.replay.repeat,
+        },
+        replay_enabled: shared.settings.replay_enabled,
         profiles: shared
             .settings
             .profiles
@@ -332,6 +384,157 @@ fn run_macro(
     Ok(snapshot(state))
 }
 
+/// Store the typer's draft and pace.
+///
+/// This is also the "save" for every control on the tab, so the text lands in
+/// the settings file as it is typed rather than on a button press. The shortcut
+/// is only re-registered when the shortcut itself changed: saving every
+/// keystroke would otherwise take the key back from the system each time.
+#[tauri::command]
+fn save_typer(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    runtime: State<'_, RuntimeState>,
+    typer: TyperSettings,
+) -> View {
+    let (settings, changed) = {
+        let mut shared = state.lock().unwrap();
+        let changed = shared.settings.typer.hotkey != typer.hotkey;
+        shared.settings.typer = typer;
+        save(&app, &shared);
+        (shared.settings.clone(), changed)
+    };
+    if changed {
+        runtime::register_shortcuts(&runtime, &app, &settings);
+    }
+    snapshot(state)
+}
+
+/// Start typing the draft, on a thread of its own.
+#[tauri::command]
+fn start_typer(
+    state: State<'_, SharedState>,
+    runtime: State<'_, RuntimeState>,
+    holder: State<'_, typer::Holder>,
+) -> Result<View, String> {
+    let settings = state.lock().unwrap().settings.clone();
+    if !settings.typer_enabled {
+        return Err("the typer is switched off".to_string());
+    }
+    typer::start(&runtime, &holder, &settings.typer)?;
+    Ok(snapshot(state))
+}
+
+/// A fresh id for a recording. The count is only a hint, so the loop is what
+/// makes it unique after a delete.
+fn recording_id(settings: &Settings) -> String {
+    let mut next = settings.replay.recordings.len() + 1;
+    loop {
+        let id = format!("replay-{next}");
+        if !settings
+            .replay
+            .recordings
+            .iter()
+            .any(|entry| entry.id == id)
+        {
+            return id;
+        }
+        next += 1;
+    }
+}
+
+/// Save the recording that just finished, under a name.
+#[tauri::command]
+fn save_recording(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    name: String,
+) -> Result<View, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("a recording needs a name before it can be saved".to_string());
+    }
+    let draft = replay::take_pending()
+        .ok_or_else(|| "there is no recording waiting to be saved".to_string())?;
+    {
+        let mut shared = state.lock().unwrap();
+        let id = recording_id(&shared.settings);
+        shared.settings.replay.recordings.push(replay::Recording {
+            id: id.clone(),
+            name,
+            events: draft.events,
+            duration_ms: draft.duration_ms,
+        });
+        shared.settings.replay.selected = id;
+        save(&app, &shared);
+    }
+    Ok(snapshot(state))
+}
+
+#[tauri::command]
+fn delete_recording(app: AppHandle, state: State<'_, SharedState>, id: String) -> View {
+    {
+        let mut shared = state.lock().unwrap();
+        shared.settings.replay.recordings.retain(|entry| entry.id != id);
+        // The selection has to keep pointing at something: a Play button aimed
+        // at a deleted recording would fail with no way to tell why.
+        if shared.settings.replay.selected == id {
+            shared.settings.replay.selected = shared
+                .settings
+                .replay
+                .recordings
+                .first()
+                .map(|entry| entry.id.clone())
+                .unwrap_or_default();
+        }
+        save(&app, &shared);
+    }
+    snapshot(state)
+}
+
+#[tauri::command]
+fn select_recording(app: AppHandle, state: State<'_, SharedState>, id: String) -> View {
+    {
+        let mut shared = state.lock().unwrap();
+        if shared
+            .settings
+            .replay
+            .recordings
+            .iter()
+            .any(|entry| entry.id == id)
+        {
+            shared.settings.replay.selected = id;
+            save(&app, &shared);
+        }
+    }
+    snapshot(state)
+}
+
+/// The replayer's two shortcuts, and how many passes a replay makes.
+///
+/// Saving them re-registers the shortcuts, which is why they are not part of
+/// the settings write every other tab does.
+#[tauri::command]
+fn save_replay_options(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    runtime: State<'_, RuntimeState>,
+    record_hotkey: String,
+    replay_hotkey: String,
+    repeat: Option<u32>,
+) -> View {
+    {
+        let mut shared = state.lock().unwrap();
+        shared.settings.replay.record_hotkey = record_hotkey.trim().to_string();
+        shared.settings.replay.replay_hotkey = replay_hotkey.trim().to_string();
+        shared.settings.replay.repeat = repeat;
+        save(&app, &shared);
+    }
+    let settings = state.lock().unwrap().settings.clone();
+    runtime::register_shortcuts(&runtime, &app, &settings);
+    snapshot(state)
+}
+
 /// Turn one tool on or off.
 ///
 /// `tool` is `remapper`, `clicker` or `macros`. Switching a tool off also stops
@@ -364,6 +567,14 @@ fn set_tool_enabled(
                 shared.settings.macros_enabled = enabled;
                 Vec::new()
             }
+            "typer" => {
+                shared.settings.typer_enabled = enabled;
+                Vec::new()
+            }
+            "replay" => {
+                shared.settings.replay_enabled = enabled;
+                Vec::new()
+            }
             _ => Vec::new(),
         };
         save(&app, &shared);
@@ -377,7 +588,14 @@ fn set_tool_enabled(
         let running = runtime.running();
         let stop_it = match tool.as_str() {
             "clicker" => running.as_deref() == Some(runtime::CLICKER),
-            "macros" => running.is_some() && running.as_deref() != Some(runtime::CLICKER),
+            "typer" => running.as_deref() == Some(typer::TYPER),
+            "replay" => running.as_deref() == Some(replay::REPLAY),
+            // A macro in progress is nobody else's business: the named runs
+            // above are excluded so switching the macros off leaves them alone.
+            "macros" => matches!(running.as_deref(), Some(name)
+                if name != runtime::CLICKER
+                    && name != typer::TYPER
+                    && name != replay::REPLAY),
             _ => false,
         };
         if stop_it {
@@ -730,8 +948,9 @@ fn import_socd(app: AppHandle, state: State<'_, SharedState>, text: String) -> V
 // ── app ───────────────────────────────────────────────────────────
 
 /// Bring the window back from the tray, from minimised, or from behind other
-/// windows. Shared by the tray menu, the tray click and a second launch.
-fn reveal(app: &AppHandle) {
+/// windows. Shared by the tray menu, the tray click, a second launch, and the
+/// end of a recording — which hides it in the first place.
+pub(crate) fn reveal(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
@@ -770,6 +989,9 @@ pub fn run() {
             }
             let runtime: RuntimeState = Arc::new(Runtime::new());
             app.manage(runtime.clone());
+            // The typer's counters live outside the runtime: a paused run is
+            // still the runtime's run, but only the typer has a pause.
+            app.manage(typer::Holder::new());
             hook::install(shared.clone());
             // The clicker's start shortcut and every enabled macro's shortcut.
             runtime::register_shortcuts(&runtime, app.handle(), &settings);
@@ -868,6 +1090,23 @@ pub fn run() {
             save_macro,
             delete_macro,
             run_macro,
+            save_typer,
+            start_typer,
+            typer::typer_status,
+            typer::typer_pause,
+            typer::typer_resume,
+            typer::typer_stop,
+            typer::typer_plan,
+            replay::replay_state,
+            replay::start_recording,
+            replay::stop_recording,
+            replay::start_replay,
+            replay::stop_replay,
+            replay::discard_recording,
+            save_recording,
+            delete_recording,
+            select_recording,
+            save_replay_options,
             set_autostart,
             choose_exe,
             pick_region,

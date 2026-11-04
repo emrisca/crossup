@@ -127,13 +127,14 @@ impl Runtime {
     }
 
     /// Claim the desktop for one run, or explain who has it.
-    fn claim(&self, label: &str) -> Result<Arc<AtomicBool>, String> {
+    pub(crate) fn claim(&self, label: &str) -> Result<Arc<AtomicBool>, String> {
         let mut state = self.state.lock().unwrap();
         if let Some(running) = state.running.clone() {
-            return Err(if running == CLICKER {
-                "the auto clicker is already running".to_string()
-            } else {
-                format!("the macro “{running}” is running")
+            return Err(match running.as_str() {
+                CLICKER => "the auto clicker is already running".to_string(),
+                crate::typer::TYPER => "the typer is already running".to_string(),
+                crate::replay::REPLAY => "a replay is already running".to_string(),
+                _ => format!("the macro “{running}” is running"),
             });
         }
         let stop = Arc::new(AtomicBool::new(false));
@@ -143,7 +144,7 @@ impl Runtime {
     }
 
     /// Hand the desktop back, with the numbers the run ended on.
-    fn release(&self, clicks: i64, elapsed_secs: f64) {
+    pub(crate) fn release(&self, clicks: i64, elapsed_secs: f64) {
         let mut state = self.state.lock().unwrap();
         state.running = None;
         state.finished_clicks = clicks;
@@ -277,6 +278,83 @@ pub fn register_shortcuts(runtime: &Arc<Runtime>, app: &AppHandle, settings: &Se
         }
     }
 
+    // The typer's start/stop shortcut. It shares the one run slot, so pressing
+    // it while the clicker is going is refused with a message rather than
+    // quietly doing nothing.
+    if settings.typer_enabled && !settings.typer.hotkey.trim().is_empty() {
+        let accelerator = settings.typer.hotkey.clone();
+        if mouse_hotkeys::parse(&accelerator).is_some() {
+            errors.push(format!(
+                "the typer shortcut “{accelerator}” must be a key combination: a mouse button \
+                 cannot start typing"
+            ));
+        } else {
+            match Shortcut::from_str(&accelerator) {
+                Ok(shortcut) => {
+                    let runtime = Arc::clone(runtime);
+                    let result = shortcuts.on_shortcut(shortcut, move |app, _, event| {
+                        if event.state != ShortcutState::Pressed {
+                            return;
+                        }
+                        typer_shortcut(app, &runtime);
+                    });
+                    if let Err(error) = result {
+                        errors.push(format!("the typer shortcut “{accelerator}”: {error}"));
+                    }
+                }
+                Err(error) => errors.push(format!(
+                    "the typer shortcut “{accelerator}” is not one I understand ({error})"
+                )),
+            }
+        }
+    }
+
+    // The replayer's two shortcuts. Recording and replaying are separate
+    // toggles, and each is one key: press it to begin, press it again to end.
+    if settings.replay_enabled {
+        let pairs = [
+            ("record", settings.replay.record_hotkey.clone()),
+            ("replay", settings.replay.replay_hotkey.clone()),
+        ];
+        for (which, accelerator) in pairs {
+            if accelerator.trim().is_empty() {
+                continue;
+            }
+            match mouse_hotkeys::parse(&accelerator) {
+                Some((button, mods)) => mouse.push(mouse_hotkeys::Binding {
+                    button,
+                    mods,
+                    action: if which == "record" {
+                        mouse_hotkeys::Action::Record
+                    } else {
+                        mouse_hotkeys::Action::Replay
+                    },
+                }),
+                None => match Shortcut::from_str(&accelerator) {
+                    Ok(shortcut) => {
+                        let runtime = Arc::clone(runtime);
+                        let result = shortcuts.on_shortcut(shortcut, move |app, _, event| {
+                            if event.state != ShortcutState::Pressed {
+                                return;
+                            }
+                            if which == "record" {
+                                crate::replay::record_shortcut(app, &runtime);
+                            } else {
+                                crate::replay::replay_shortcut(app, &runtime);
+                            }
+                        });
+                        if let Err(error) = result {
+                            errors.push(format!("the {which} shortcut “{accelerator}”: {error}"));
+                        }
+                    }
+                    Err(error) => errors.push(format!(
+                        "the {which} shortcut “{accelerator}” is not one I understand ({error})"
+                    )),
+                },
+            }
+        }
+    }
+
     for definition in settings
         .macros
         .iter()
@@ -337,6 +415,32 @@ pub fn clicker_shortcut(app: &AppHandle, runtime: &Arc<Runtime>, hold: bool, dow
             runtime.stop();
         }
         (false, false) => {}
+    }
+}
+
+/// The typer's shortcut fired: stop a run that is going, or start the draft.
+///
+/// The text is read as it is now, so an edit takes effect without a restart.
+pub fn typer_shortcut(app: &AppHandle, runtime: &Arc<Runtime>) {
+    if runtime.running().as_deref() == Some(crate::typer::TYPER) {
+        runtime.stop();
+        return;
+    }
+    let settings = {
+        let state = app.state::<SharedState>();
+        let shared = state.lock().unwrap();
+        if !shared.settings.typer_enabled {
+            return;
+        }
+        shared.settings.typer.clone()
+    };
+    let holder = app.state::<crate::typer::Holder>();
+    if let Err(error) = crate::typer::start(runtime, &holder, &settings) {
+        holder.current().stopped();
+        runtime.state.lock().unwrap().last_macro = Some(Report {
+            stop_reason: format!("typer: {error}"),
+            actions: 0,
+        });
     }
 }
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { ArrowDownUp, ChevronRight } from "lucide-react";
 import { CopyButton } from "@/components/interior/copy-button";
 import { Modal } from "@/components/interior/modal";
 import { PressDepth } from "@/components/interior/press-depth";
@@ -7,10 +8,15 @@ import {
   MODE_LABELS,
   MODE_NOTES,
   call,
+  isTauri,
   keyLabel,
+  updateCheck,
+  updateInstall,
+  updateState,
   type MappingView,
   type Mode,
   type ProfileView,
+  type UpdateView,
   type View,
 } from "@/bridge";
 import { KeyBinder } from "./Mappings";
@@ -43,7 +49,7 @@ export function SettingsDialog({
   onSocd: () => void;
 }) {
   const autostart = view.autostart;
-  // The entry can point somewhere else than the setting does — an older install,
+  // The entry can point somewhere else than the setting does: an older install,
   // a copy that has since moved. Saying which one Windows will actually run is
   // the difference between a switch that looks right and one that is.
   const wrongTarget =
@@ -54,11 +60,11 @@ export function SettingsDialog({
       onClose={onClose}
       title="Settings"
       description="Everything here applies immediately."
-      maxWidth={480}
+      maxWidth={520}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span className="hb__row-note" style={{ margin: 0 }}>
-            {view.installed ? "Keyboard hook installed" : "Preview — no hook in a browser"}
+            {view.installed ? "Keyboard hook installed" : "Preview: no hook in a browser"}
           </span>
           <span className="hb__spacer" />
           <PressDepth depth={3} tilt={5} onClick={onClose}>
@@ -73,15 +79,7 @@ export function SettingsDialog({
             <span className="hb__row-name">Appearance</span>
             <span className="hb__row-note">Hue, saturation, mode and presets</span>
           </span>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="m6 3.5 4.5 4.5L6 12.5"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <ChevronRight size={13} strokeWidth={1.7} aria-hidden="true" />
         </button>
 
         <div className="hb__row">
@@ -173,16 +171,10 @@ export function SettingsDialog({
               Copy every setting out as settings.json, or put a copy back
             </span>
           </span>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M8 2.5v7m0 0L5.5 7M8 9.5 10.5 7M3.5 12.5h9"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <ArrowDownUp size={13} strokeWidth={1.7} aria-hidden="true" />
         </button>
+
+        <Updates />
 
         {view.debug && (
           <div
@@ -205,6 +197,111 @@ export function SettingsDialog({
     </Modal>
   );
 }
+
+/**
+ * The version, and the same check the shell runs on its own clock, on demand.
+ *
+ * The shell asks GitHub when it starts and every six hours after that; this row
+ * is for the person who would rather not wait, and for the answer to be visible
+ * when it arrives. An install restarts Crossup, so the button is one way only.
+ */
+function Updates() {
+  const [state, setState] = useState<UpdateView | null>(null);
+  const [checking, setChecking] = useState(false);
+  const native = isTauri();
+
+  useEffect(() => {
+    if (!native) return;
+    let live = true;
+    updateState()
+      .then((next) => {
+        if (live) setState(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [native]);
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      setState(await updateCheck());
+    } catch (reason) {
+      setState((current) =>
+        current ? { ...current, status: "error", error: String(reason) } : current,
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const working =
+    state?.status === "downloading" ||
+    state?.status === "installing" ||
+    state?.status === "restarting";
+  const offered = state?.status === "available" && Boolean(state.version);
+  const version = state?.currentVersion ? `Crossup ${state.currentVersion}` : "Crossup";
+
+  const note = !native
+    ? "Updates install from the desktop app, not a browser preview."
+    : working
+      ? state?.status === "downloading"
+        ? `Downloading ${megabytes(state.downloaded)}${state.total ? ` of ${megabytes(state.total)}` : ""}. Crossup restarts when it lands.`
+        : "Installing. Crossup restarts into the new build."
+      : offered
+        ? `Version ${state?.version} is available. Installing replaces this copy and restarts it.`
+        : state?.status === "error"
+          ? (state.error ?? "The check did not finish.")
+          : state?.status === "upToDate"
+            ? "This is the newest release."
+            : "Checked when Crossup starts, and every six hours after that.";
+
+  return (
+    <div className="hb__row" style={{ alignItems: "flex-start" }}>
+      <span
+        style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, gap: 2 }}
+      >
+        <span className="hb__row-name">{version}</span>
+        <span className="hb__row-note" style={{ margin: 0 }}>
+          {note}
+        </span>
+        {offered && state?.notes && (
+          <span
+            className="hb__row-note hb__dim"
+            style={{ margin: 0, whiteSpace: "pre-line" }}
+          >
+            {state.notes.split("\n").slice(0, 4).join("\n")}
+          </span>
+        )}
+      </span>
+      <span style={{ display: "flex", gap: 5 }}>
+        {offered || working ? (
+          <button
+            type="button"
+            className="hb__mini"
+            disabled={working}
+            onClick={() => void updateInstall().catch(() => undefined)}
+          >
+            {working ? "Installing…" : "Update now"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="hb__mini"
+            disabled={!native || checking}
+            onClick={() => void check()}
+          >
+            {checking ? "Checking…" : "Check for updates"}
+          </button>
+        )}
+      </span>
+    </div>
+  );
+}
+
+/** A byte count as the update row writes one. */
+const megabytes = (bytes: number): string => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
 export function Switch({
   checked,
@@ -299,7 +396,7 @@ export function AddProfileDialog({
       <div className="mat-well" style={{ maxHeight: 260, overflowY: "auto", padding: 6, borderRadius: 10 }}>
         {matches.length === 0 && (
           <p className="hb__row-note" style={{ padding: "8px 9px", margin: 0 }}>
-            No running program matches. Press Enter to add “{query}” anyway.
+            No running program matches. Press Enter to add "{query}" anyway.
           </p>
         )}
         {matches.map((name) => {
@@ -454,10 +551,10 @@ const BACKUP_FORMATS: { value: BackupFormat; label: string }[] = [
 /**
  * The settings as text, taken out or put back in.
  *
- * JSON is the app's own file and holds everything — profiles, macros, clicker,
- * the switches and the sign-in executable — so a copy of it rebuilds Crossup
- * on another machine, or after a reinstall that forgot. `.socd` is the original
- * format and only carries profiles and mappings.
+ * JSON is the app's own file and holds everything: profiles, macros, the
+ * clicker, the switches and the sign-in executable. A copy of it rebuilds
+ * Crossup on another machine, or after a reinstall that forgot. `.socd` is the
+ * original format and only carries profiles and mappings.
  */
 export function SocdDialog({
   open,
@@ -554,7 +651,7 @@ export function SocdDialog({
       {error && <p className="hb__warn">{error}</p>}
       <p className="hb__row-note">
         {json
-          ? "Everything: profiles, macros, the clicker and the switches. The app also keeps this file at %APPDATA%\\dev.crossup.app\\settings.json — replace it there with the app closed and it starts from the backup."
+          ? "Everything: profiles, macros, the clicker and the switches. The app also keeps this file at %APPDATA%\\dev.crossup.app\\settings.json. Replace it there with the app closed and it starts from the backup."
           : "The original Hitboxer format. Profiles and mappings only; macros and the auto clicker are not in it."}
       </p>
     </Modal>

@@ -25,7 +25,7 @@
 }
 
 .hb__rail-label {
-  padding: 8px 18px 5px; font-size: 9.5px; font-weight: 600;
+  padding: 8px 10px 6px; font-size: 9.5px; font-weight: 600;
   letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
 }
 
@@ -33,7 +33,7 @@
 
 .hb__profile {
   display: flex; align-items: center; gap: 8px; width: 100%;
-  padding: 8px 9px; border: 0; border-radius: 9px; background: none;
+  padding: 8px 8px; border: 0; border-radius: 9px; background: none;
   color: var(--ink-2); font: inherit; text-align: left; cursor: pointer;
 }
 
@@ -78,7 +78,7 @@
 
 .hb__bar {
   display: flex; height: 50px; flex: none; align-items: center; gap: 10px;
-  padding: 0 14px; border-bottom: 1px solid var(--hairline);
+  padding: 0 10px; border-bottom: 1px solid var(--hairline);
   background: color-mix(in oklab, var(--panel) 86%, transparent);
   backdrop-filter: blur(10px);
 }
@@ -108,7 +108,7 @@
 .hb__title { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.025em; color: var(--ink); }
 
 .hb__sub {
-  margin: 3px 0 0; font-family: var(--font-mono), ui-monospace, monospace;
+  margin: 6px 0 0; font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 10px; letter-spacing: 0.03em; color: var(--ink-3);
 }
 
@@ -148,7 +148,7 @@
 
 .hb__mode {
   display: inline-flex; align-items: center; gap: 5px; justify-self: start;
-  padding: 3px 8px; border-radius: 999px; background: var(--well);
+  padding: 6px 8px; border-radius: 999px; background: var(--well);
   box-shadow: var(--shadow-row); font-size: 10.5px; color: var(--ink-2);
 }
 
@@ -172,7 +172,7 @@
 
 .hb__legend {
   display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px;
-  padding-top: 16px; border-top: 1px solid var(--hairline);
+  padding-top: 10px; border-top: 1px solid var(--hairline);
 }
 
 .hb__legend-item {
@@ -193,7 +193,7 @@
 
 .hb__row {
   display: flex; align-items: center; gap: 12px; width: 100%;
-  padding: 11px 12px; border: 0; border-radius: 10px;
+  padding: 10px 10px; border: 0; border-radius: 10px;
   background: var(--well); box-shadow: var(--shadow-row);
   color: var(--ink-2); font: inherit; text-align: left;
 }
@@ -227,7 +227,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__process {
   display: flex; align-items: center; gap: 9px; width: 100%;
-  padding: 7px 9px; border: 0; border-radius: 8px; background: none;
+  padding: 6px 8px; border: 0; border-radius: 8px; background: none;
   color: var(--ink-2); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
 }
 
@@ -255,7 +255,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__top {
   display: flex; height: 52px; flex: none; align-items: center; gap: 10px;
-  padding: 0 12px; border-radius: 16px;
+  padding: 0 10px; border-radius: 16px;
 }
 
 .hb__tabs { display: flex; flex: 1; min-height: 0; flex-direction: column; }
@@ -290,7 +290,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__card {
   border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
-  padding: 14px 15px;
+  padding: 10px 10px;
 }
 
 .hb__card--tight { display: flex; flex-direction: column; padding: 12px 13px; }
@@ -304,7 +304,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__line {
   display: flex; align-items: center; gap: 12px;
-  padding: 9px 0; border-top: 1px solid var(--hairline);
+  padding: 8px 0; border-top: 1px solid var(--hairline);
 }
 
 .hb__line:first-of-type { border-top: 0; }
@@ -369,7 +369,7 @@ button.hb__row { cursor: pointer; }
 .hb__row-actions { display: flex; align-items: center; gap: 7px; margin-top: 8px; }
 
 .hb__mini {
-  padding: 6px 11px; border: 0; border-radius: 8px; background: var(--panel);
+  padding: 6px 10px; border: 0; border-radius: 8px; background: var(--panel);
   box-shadow: var(--shadow-cap); color: var(--ink-2);
   font: inherit; font-size: 11.5px; cursor: pointer;
 }
@@ -393,7 +393,7 @@ button.hb__row { cursor: pointer; }
 .hb__tag button { padding: 0 2px; border: 0; background: none; color: var(--ink-3); font-size: 12px; cursor: pointer; }
 
 .hb__chip {
-  padding: 4px 10px; border: 0; border-radius: 999px; background: var(--well);
+  padding: 6px 10px; border: 0; border-radius: 999px; background: var(--well);
   box-shadow: var(--shadow-well); color: var(--ink-3);
   font: inherit; font-size: 11px; text-transform: capitalize; cursor: pointer;
 }
@@ -414,7 +414,7 @@ button.hb__row { cursor: pointer; }
 .hb__zones { display: flex; flex-direction: column; gap: 7px; margin: 7px 0; }
 
 .hb__zone {
-  padding: 8px 9px; border-radius: 10px;
+  padding: 8px 8px; border-radius: 10px;
   background: var(--well); box-shadow: var(--shadow-row);
 }
 
@@ -449,7 +449,7 @@ button.hb__row { cursor: pointer; }
 /* ── the block builder ──────────────────────────────────────────── */
 
 .hb__builder {
-  margin-top: 14px; padding: 13px 14px 15px;
+  margin-top: 10px; padding: 13px 14px 15px;
   border-radius: 14px; background: var(--sub); box-shadow: var(--shadow-row);
 }
 
@@ -459,7 +459,7 @@ button.hb__row { cursor: pointer; }
    padding so nothing shows through above it. */
 .pal {
   position: sticky; top: 0; z-index: 2;
-  margin: -13px -14px 0; padding: 13px 14px 8px;
+  margin: -10px -10px 0; padding: 10px 10px 8px;
   background: var(--sub); border-radius: 14px 14px 0 0;
 }
 
@@ -508,7 +508,7 @@ button.hb__row { cursor: pointer; }
 
 .blk__children {
   display: flex; flex-direction: column; gap: 6px;
-  margin: 6px 0 0 16px; padding-left: 11px;
+  margin: 6px 0 0 10px; padding-left: 11px;
   border-left: 2px solid var(--hairline);
 }
 
@@ -537,13 +537,63 @@ button.hb__row { cursor: pointer; }
   overflow: hidden;
 }
 
+/* ── the typer ────────────────────────────────────────────────── */
+
+/* A draft wants more room than a settings blob does, and it is the one control
+   on the tab that people will actually read back. */
+.hb__typer-text { min-height: 224px; height: 32vh; font-size: 12.5px; line-height: 1.62; }
+.hb__typer-text:read-only { opacity: 0.78; }
+
+.hb__status-row { display: flex; align-items: center; gap: 8px; margin: 1px 0 0; }
+.hb__status-row .hb__pill { font-variant-numeric: tabular-nums; }
+
+.hb__meter {
+  height: 5px; margin: 9px 0 4px; border-radius: 999px;
+  background: var(--well); box-shadow: var(--shadow-well); overflow: hidden;
+}
+
+.hb__meter i {
+  display: block; height: 100%; border-radius: 999px; background: var(--accent);
+  transition: width 0.18s linear;
+}
+
+/* ── the replayer ─────────────────────────────────────────────── */
+
+.hb__recordings { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+/* One saved recording: the name is the button, the count is the caption. */
+.hb__recording {
+  display: flex; align-items: center; gap: 6px;
+  border-radius: 10px; background: var(--well); box-shadow: var(--shadow-row);
+}
+
+.hb__recording[aria-current="true"] {
+  box-shadow: inset 0 0 0 1.5px var(--accent), var(--shadow-row);
+}
+
+.hb__recording-pick {
+  display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 1px;
+  padding: 6px 8px; border: 0; border-radius: 10px; background: none;
+  color: var(--ink-2); font: inherit; text-align: left; cursor: pointer;
+}
+
+.hb__recording-name {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12.5px; color: var(--ink);
+}
+
+.hb__recording-meta {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 10px; color: var(--ink-3);
+}
+
 /* ── update banner ────────────────────────────────────────── */
 
 /* One row under the header, only while the release endpoint offers a newer
    build. Nothing installs until the button is pressed. */
 .hb__update {
   display: flex; align-items: center; gap: 10px; flex: none;
-  padding: 8px 12px; border-radius: 12px;
+  padding: 8px 10px; border-radius: 12px;
   background: var(--panel);
   box-shadow: var(--shadow-lift), inset 0 0 0 1px color-mix(in oklab, var(--accent) 28%, transparent);
 }
@@ -561,7 +611,7 @@ button.hb__row { cursor: pointer; }
 }
 
 .hb__update-note {
-  margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  margin: 6px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 11px; color: var(--ink-3);
 }
 
@@ -586,3 +636,84 @@ button.hb__row { cursor: pointer; }
 }
 
 .hb__update-later:hover { color: var(--ink); }
+
+/* ── craft pass ─────────────────────────────────────────────────
+   One lifted panel per screen and quiet groups for the rest, so hierarchy
+   comes from surface weight rather than from the order things were built in. */
+
+.hb__title { font-size: 21px; letter-spacing: -0.03em; }
+.hb__sub { margin-top: 6px; }
+
+/* The mark is a flat accent square: a gradient on 24px of colour reads as a
+   sticker, and the palette already carries the interest. */
+.hb__mark { background: var(--accent); }
+
+/* A card is a group, not a surface. The lead card is the surface. */
+.hb__card {
+  padding: 8px 0;
+  border-top: 1px solid var(--hairline);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.hb__card:first-of-type { border-top: 0; }
+
+.hb__card-title { margin-bottom: 6px; font-size: 11.5px; font-weight: 650; color: var(--ink-3); }
+
+.hb__card--tight { padding: 8px 0; }
+
+/* The lead card is the one raised surface. It sits on `--well` with an accent
+   hairline, because `--panel` is the page it is standing on: a lifted panel in
+   the same colour reads as a hole in dark mode. */
+.hb__card--lead {
+  padding: 10px; border-top: 0; border-radius: 14px;
+  background: var(--well);
+  box-shadow: var(--shadow-row),
+    inset 0 0 0 1px color-mix(in oklab, var(--accent) 26%, transparent);
+}
+
+/* Readouts in the side column keep a surface: they are compact stat panels, not
+   sections of a form, and unboxed numbers float next to the page. */
+.hb__side .hb__card,
+.hb__side .hb__card--tight {
+  padding: 10px; border-top: 0; border-radius: 12px;
+  background: var(--well); box-shadow: var(--shadow-row);
+}
+
+.hb__card--lead .hb__card-title { font-size: 13.5px; color: var(--ink); }
+.hb__card--lead .hb__card-note { color: var(--ink-2); }
+.hb__card--lead + .hb__card { margin-top: 10px; }
+
+/* A long note beside a wide control used to squeeze the label to one word a
+   line, so the control drops under the label instead. */
+.hb__line { flex-wrap: wrap; }
+.hb__line-text { flex: 1 1 220px; }
+
+/* The builder is the macro tab's lead surface too. */
+.hb__builder--lead { background: var(--panel); box-shadow: var(--shadow-lift); }
+.hb__builder--lead .pal { background: var(--panel); }
+
+/* A destructive step asks once, in place. */
+.hb__confirm { display: flex; gap: 6px; padding-right: 6px; }
+
+/* The boot frame: the window it is about to become, in flat blocks. No shimmer,
+   because a skeleton that animates is a second thing to wait for. */
+.hb__sk,
+.hb__sk-top,
+.hb__sk-rail,
+.hb__sk-tabs {
+  background: var(--sub); box-shadow: var(--shadow-row); border-radius: 10px;
+}
+
+.hb__sk-top { height: 52px; flex: none; border-radius: 16px; }
+.hb__sk-tabs { height: 40px; flex: none; border-radius: 12px; }
+.hb__sk-split { display: flex; flex: 1; min-height: 0; gap: 10px; padding: 10px; }
+.hb__sk-rail { width: 256px; flex: none; border-radius: 14px; }
+.hb__sk-page { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 10px; }
+.hb__sk { display: block; border-radius: 10px; background: var(--sub); box-shadow: var(--shadow-row); }
+.hb__sk-title { width: 180px; height: 20px; }
+.hb__sk-line { width: 260px; height: 10px; }
+.hb__sk-block { width: 100%; height: 120px; }
+.hb__sk-block--short { height: 72px; }
+.hb__sk-status { padding: 0 10px; font-size: 10.5px; color: var(--ink-3); }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import {
   MODE_LABELS,
   MODE_NOTES,
@@ -85,15 +86,7 @@ export function MappingTable({
               aria-label={`Remove ${mapping.source_label} mapping`}
               onClick={() => onDelete(index)}
             >
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path
-                  d="M3.5 4.5h9M6.5 4.5V3h3v1.5M5 4.5l.5 8h5l.5-8"
-                  stroke="currentColor"
-                  strokeWidth="1.2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+              <Trash2 size={12} strokeWidth={1.7} aria-hidden="true" />
             </button>
           </div>
         ))}
@@ -148,7 +141,7 @@ export function KeyBinder({
     // A button is caught before a key is, because the two never arrive from the
     // same press: the cap listens on the window, so a click anywhere in it is
     // the answer, and the webview's own right-click menu is suppressed while it
-    // waits — otherwise a right button would open a menu instead of binding.
+    // waits, otherwise a right button would open a menu instead of binding.
     const onDown = (event: MouseEvent) => {
       const next = mouseScanFromButton(event.button);
       if (next === null) return;

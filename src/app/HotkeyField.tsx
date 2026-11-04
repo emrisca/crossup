@@ -8,12 +8,12 @@
  *
  * Mouse buttons count, because a side button is the one key you can press
  * without letting go of the mouse. The press that starts the recording is not
- * the one that is recorded — you press the button *after* the field — which is
+ * the one that is recorded, because you press the button *after* the field, which is
  * what makes `Mouse1` assignable at all, since clicking the field is itself a
  * left click.
  *
  * A wheel notch counts too, as `WheelUp` or `WheelDown`. It is a direction
- * rather than a thing you hold, so it suits a macro — which runs on the press —
+ * rather than a thing you hold, so it suits a macro, which runs on the press,
  * and the keyboard side is not consulted for it either.
  *
  * The names it produces are the ones the Rust side parses: `KeyA`/`Digit1`
@@ -167,7 +167,7 @@ export function HotkeyField({
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
-      // Taking the press here — and on the way down — keeps the rest of the
+      // Taking the press here, and on the way down, keeps the rest of the
       // window from acting on a shortcut that is only being recorded.
       event.preventDefault();
       event.stopPropagation();

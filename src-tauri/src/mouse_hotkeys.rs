@@ -142,6 +142,10 @@ pub enum Action {
     Clicker { hold: bool },
     /// Run a macro. Held only on the way down, like the keyboard version.
     Macro { id: String, name: String },
+    /// Begin or end a recording, whichever is not happening.
+    Record,
+    /// Begin or end a replay, whichever is not happening.
+    Replay,
 }
 
 /// One watched button.
@@ -265,6 +269,18 @@ pub fn dispatch(message: u32, mouse_data: u32) {
                 // Only on the way down, so holding the button does not rerun it.
                 if down {
                     crate::runtime::macro_shortcut(&app, &runtime, &id, &name);
+                }
+            }
+            // A toggle, so only the press counts: the release would otherwise
+            // undo what the press just did.
+            Action::Record => {
+                if down {
+                    crate::replay::record_shortcut(&app, &runtime);
+                }
+            }
+            Action::Replay => {
+                if down {
+                    crate::replay::replay_shortcut(&app, &runtime);
                 }
             }
         }

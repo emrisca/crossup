@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ArrowUp } from "lucide-react";
 import { isTauri, updateInstall, updateState, type UpdateView } from "@/bridge";
 
 /** The shell checks on its own clock; this only reads the state it keeps. */
@@ -49,7 +50,7 @@ export function UpdateBanner() {
   return (
     <div className="hb__update" role="status">
       <span className="hb__update-mark" aria-hidden="true">
-        ↑
+        <ArrowUp size={12} strokeWidth={2} />
       </span>
       <div className="hb__update-text">
         <p className="hb__update-title">Crossup {update.version} is available</p>

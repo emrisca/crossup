@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Settings } from "lucide-react";
 import { PressDepth } from "@/components/interior/press-depth";
 import { Tabs } from "@/components/interior/tabs";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
@@ -16,13 +17,17 @@ import { AppearanceDialog } from "./AppearanceDialog";
 import { AddProfileDialog, MappingDialog, SettingsDialog, SocdDialog } from "./Dialogs";
 import { MacrosTab } from "./MacrosTab";
 import { RemapperTab } from "./RemapperTab";
+import { ReplayerTab } from "./ReplayerTab";
+import { TyperTab } from "./TyperTab";
 import { UpdateBanner } from "./UpdateBanner";
 
-/** The three tools, in the order they sit in the tab strip. */
+/** The tools, in the order they sit in the tab strip. */
 const TOOLS = [
   { value: "remapper", label: "Remapper" },
   { value: "clicker", label: "Auto clicker" },
+  { value: "typer", label: "Typer" },
   { value: "macros", label: "Macros" },
+  { value: "replay", label: "Replayer" },
 ];
 
 export function App() {
@@ -123,18 +128,24 @@ function Shell() {
     };
   }, [run]);
 
+  // The frame is drawn before the settings arrive, shaped like the window it is
+  // about to become, so a cold start reads as the window opening rather than as
+  // an empty rectangle holding a sentence.
   if (!view) {
     return (
-      <div
-        style={{
-          display: "grid",
-          placeItems: "center",
-          height: "100%",
-          color: "var(--ink-3)",
-          fontSize: 12,
-        }}
-      >
-        {error ?? "Loading the hook…"}
+      <div className="hb hb--shell" aria-busy="true">
+        <div className="hb__sk-top" />
+        <div className="hb__sk-tabs" />
+        <div className="hb__sk-split" aria-hidden="true">
+          <div className="hb__sk-rail" />
+          <div className="hb__sk-page">
+            <span className="hb__sk hb__sk-title" />
+            <span className="hb__sk hb__sk-line" />
+            <span className="hb__sk hb__sk-block" />
+            <span className="hb__sk hb__sk-block hb__sk-block--short" />
+          </div>
+        </div>
+        <span className="hb__sk-status">{error ?? "Loading settings"}</span>
       </div>
     );
   }
@@ -144,11 +155,27 @@ function Shell() {
   // with it is that tool's own switch, in its own tab.
   const live = native && view.installed;
   const status = !native ? "Preview" : live ? "Active" : "No hook";
-  const offCount = [view.hook_enabled, view.clicker_enabled, view.macros_enabled].filter(
-    (on) => !on,
-  ).length;
+  const offCount = [
+    view.hook_enabled,
+    view.clicker_enabled,
+    view.typer_enabled,
+    view.macros_enabled,
+    view.replay_enabled,
+  ].filter((on) => !on).length;
   const runningClicker = activity?.running === "clicker";
-  const runningMacro = Boolean(activity?.running) && !runningClicker;
+  const runningTyper = activity?.running === "typer";
+  const runningReplay = activity?.running === "replay";
+  const runningMacro =
+    Boolean(activity?.running) && !runningClicker && !runningTyper && !runningReplay;
+  // Which tools are off, by name: a footer of five switch states is a chain
+  // nobody scans, but "typer and macros off" is one thing to read.
+  const offNames = [
+    !view.hook_enabled && "remapper",
+    !view.clicker_enabled && "clicker",
+    !view.typer_enabled && "typer",
+    !view.macros_enabled && "macros",
+    !view.replay_enabled && "replayer",
+  ].filter((name): name is string => Boolean(name));
 
   return (
     <div className="hb hb--shell">
@@ -185,7 +212,11 @@ function Shell() {
             <span className="hb__pulse" aria-hidden="true" />
             {runningClicker
               ? `clicking · ${activity.clicks.toLocaleString()}`
-              : activity.running}
+              : runningTyper
+                ? "typing"
+                : runningReplay
+                  ? "replaying"
+                  : activity.running}
           </span>
         )}
 
@@ -201,15 +232,7 @@ function Shell() {
           title="Settings"
           onClick={() => setSettingsOpen(true)}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.5" />
-            <path
-              d="m19.4 13.5 1.3 1a.7.7 0 0 1 .1.9l-1.3 2.2a.7.7 0 0 1-.8.3l-1.6-.5a6.6 6.6 0 0 1-1.6.9l-.3 1.7a.7.7 0 0 1-.7.6h-2.6a.7.7 0 0 1-.7-.6l-.3-1.7a6.6 6.6 0 0 1-1.6-.9l-1.6.5a.7.7 0 0 1-.8-.3L4.2 15.4a.7.7 0 0 1 .1-.9l1.3-1a6.8 6.8 0 0 1 0-1.9l-1.3-1a.7.7 0 0 1-.1-.9l1.3-2.2a.7.7 0 0 1 .8-.3l1.6.5a6.6 6.6 0 0 1 1.6-.9l.3-1.7a.7.7 0 0 1 .7-.6h2.6a.7.7 0 0 1 .7.6l.3 1.7a6.6 6.6 0 0 1 1.6.9l1.6-.5a.7.7 0 0 1 .8.3l1.3 2.2a.7.7 0 0 1-.1.9l-1.3 1a6.8 6.8 0 0 1 0 1.9Z"
-              stroke="currentColor"
-              strokeWidth="1.3"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Settings size={16} strokeWidth={1.6} aria-hidden="true" />
         </button>
       </header>
 
@@ -244,6 +267,10 @@ function Shell() {
               run={run}
               onError={setError}
             />
+          ) : value === "typer" ? (
+            <TyperTab view={view} run={run} onError={setError} />
+          ) : value === "replay" ? (
+            <ReplayerTab view={view} run={run} onError={setError} />
           ) : (
             <MacrosTab view={view} activity={activity} run={run} onError={setError} />
           )
@@ -260,8 +287,7 @@ function Shell() {
         <span>{view.installed ? "Keyboard hook installed" : "Preview mode"}</span>
         <span>·</span>
         <span>
-          remapper {view.hook_enabled ? "on" : "off"} · clicker{" "}
-          {view.clicker_enabled ? "on" : "off"} · macros {view.macros_enabled ? "on" : "off"}
+          {offNames.length === 0 ? "every tool on" : `${offNames.join(", ")} off`}
         </span>
         {activity?.running && (
           <>
@@ -269,7 +295,11 @@ function Shell() {
             <span>
               {runningClicker
                 ? `${activity.achievedCps.toFixed(1)} of ${activity.requestedCps.toFixed(1)} CPS`
-                : `running “${activity.running}”`}
+                : runningTyper
+                  ? "typing the draft"
+                  : runningReplay
+                    ? `replaying "${activity.source}"`
+                    : `running "${activity.running}"`}
             </span>
           </>
         )}

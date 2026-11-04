@@ -3,7 +3,7 @@
  *
  * In the packaged app every call is a Tauri command. In a plain browser there is
  * no hook and no OS, so the same calls are answered by an in-memory copy of the
- * same state — enough to build, review and screenshot the UI, and the banner in
+ * same state, enough to build, review and screenshot the UI, and the banner in
  * the header says which side is live.
  */
 
@@ -223,8 +223,146 @@ export type View = {
   keys: KeyView[];
   clicker: ClickerSettings;
   macros: MacroView[];
+  typer: TyperSettings;
+  typer_enabled: boolean;
+  replay: ReplaySettingsView;
+  replay_enabled: boolean;
   autostart: AutostartView;
 };
+
+// ── the typer ─────────────────────────────────────────────────────
+
+/** What to type, and how. Mirrors `TyperSettings` on the Rust side. */
+export type TyperSettings = {
+  text: string;
+  /** Resting pace, in words a minute. */
+  wpm: number;
+  /** Share of characters mistyped and corrected, 0 to 0.25. */
+  typoRate: number;
+  /** Finish by this many seconds; it wins over the pace. Null means never. */
+  deadlineSecs: number | null;
+  /** Seconds to wait before the first keystroke. */
+  countdownSecs: number;
+  /** The start/stop shortcut, in the spelling the other tools use. */
+  hotkey: string;
+};
+
+export const DEFAULT_TYPER: TyperSettings = {
+  text: "",
+  wpm: 65,
+  typoRate: 0.04,
+  deadlineSecs: null,
+  countdownSecs: 3,
+  hotkey: "",
+};
+
+/** What a run is doing, as the shell reports it. */
+export type TyperStatusView = {
+  /** `idle`, `typing`, `paused`, `done`, `stopped` or `unfocused`. */
+  status: "idle" | "typing" | "paused" | "done" | "stopped" | "unfocused";
+  typed: number;
+  total: number;
+  plannedMs: number;
+  elapsedSecs: number;
+};
+
+/** What a run will do, worked out before it starts. */
+export type TyperPlan = {
+  chars: number;
+  words: number;
+  /** Keystrokes a second, after any deadline. */
+  cps: number;
+  totalMs: number;
+  /** A deadline asked for a faster pace than the engine will keep. */
+  clamped: boolean;
+};
+
+/** The estimate for a draft, for the readout above the run. */
+export function typerPlan(text: string, settings: TyperSettings): Promise<TyperPlan> {
+  return call<TyperPlan>("typer_plan", { text, settings });
+}
+
+/** Live counters; polled while the tab is open. */
+export function typerStatus(): Promise<TyperStatusView> {
+  return call<TyperStatusView>("typer_status");
+}
+
+export function typerPause(): Promise<TyperStatusView> {
+  return call<TyperStatusView>("typer_pause");
+}
+
+export function typerResume(): Promise<TyperStatusView> {
+  return call<TyperStatusView>("typer_resume");
+}
+
+export function typerStop(): Promise<TyperStatusView> {
+  return call<TyperStatusView>("typer_stop");
+}
+
+// ── the replayer ──────────────────────────────────────────────────
+
+/** One saved recording, as the list shows it. */
+export type ReplaySummary = {
+  id: string;
+  name: string;
+  events: number;
+  durationMs: number;
+};
+
+/** The replayer's saved state. What it is doing is polled separately. */
+export type ReplaySettingsView = {
+  recordings: ReplaySummary[];
+  selected: string;
+  /** The one key that starts a recording and ends it again. */
+  recordHotkey: string;
+  /** The one key that starts a replay and stops it again. */
+  replayHotkey: string;
+  /** How many passes a replay makes. Null is forever. */
+  repeat: number | null;
+};
+
+/** What a recording or a replay is doing right now. */
+export type ReplayStateView = {
+  recording: boolean;
+  /** Events captured so far, and how long the recording has been running. */
+  events: number;
+  durationMs: number;
+  /** A finished recording waiting for a name. */
+  pending: { events: number; durationMs: number } | null;
+  playing: boolean;
+  status: "idle" | "recording" | "replaying" | "done" | "stopped";
+  played: number;
+  total: number;
+  pass: number;
+  passes: number | null;
+  /** Why something could not start, if it could not. */
+  note: string | null;
+};
+
+export function replayState(): Promise<ReplayStateView> {
+  return call<ReplayStateView>("replay_state");
+}
+
+/** Begin recording; the shell hides the window until the shortcut ends it. */
+export function startRecording(): Promise<ReplayStateView> {
+  return call<ReplayStateView>("start_recording");
+}
+
+export function stopRecording(): Promise<ReplayStateView> {
+  return call<ReplayStateView>("stop_recording");
+}
+
+export function startReplay(id?: string): Promise<ReplayStateView> {
+  return call<ReplayStateView>("start_replay", { id: id ?? null });
+}
+
+export function stopReplay(): Promise<ReplayStateView> {
+  return call<ReplayStateView>("stop_replay");
+}
+
+export function discardRecording(): Promise<ReplayStateView> {
+  return call<ReplayStateView>("discard_recording");
+}
 
 // ── updates ──────────────────────────────────────────────────────
 
@@ -246,6 +384,11 @@ export type UpdateView = {
 /** What the updater last found. Polled; the shell changes it on its own clock. */
 export function updateState(): Promise<UpdateView> {
   return call<UpdateView>("update_state");
+}
+
+/** Ask again now, rather than waiting for the shell's next six-hourly check. */
+export function updateCheck(): Promise<UpdateView> {
+  return call<UpdateView>("update_check");
 }
 
 /** Download, verify and install; the shell restarts itself when it lands. */
@@ -351,13 +494,13 @@ export const BLOCK_LABELS: Record<Step["kind"], string> = {
   repeat: "Repeat",
 };
 
-/** A fresh drag: a click block whose mode is `drag` — press, travel, let go.
+/** A fresh drag: a click block whose mode is `drag`, which presses, travels and lets go.
  * It is the click block's fifth mode rather than a kind of its own, so the
  * palette entry below uses this instead of a template lookup by kind. */
 export const DRAG_TEMPLATE = (): Step => BLOCK_TEMPLATES.click({ mode: "drag" });
 
 /** What a block calls itself in the tree. A drag is a click block, and calling
- * its row “Click” would read as a mistake. */
+ * its row "Click" would read as a mistake. */
 export function blockTitle(step: Step): string {
   if (step.kind === "click" && step.mode === "drag") return "Click and drag";
   return BLOCK_LABELS[step.kind];
@@ -376,9 +519,8 @@ export function stepSummary(step: Step, keys: KeyView[]): string {
       return `Release ${label(step.scan)}`;
     }
     case "text":
-      return step.perCharMs > 0
-        ? `Type “${step.text}”, ${step.perCharMs} ms a character`
-        : `Type “${step.text}”`;
+      return step.perCharMs > 0         ? `Type "${step.text}", ${step.perCharMs} ms a character`
+        : `Type "${step.text}"`;
     case "move":
       return step.relative
         ? `Move the mouse by ${step.x}, ${step.y}`
@@ -581,16 +723,34 @@ const toMapping = (mode: Mode, source: number, dest: number): MappingView => ({
   dest_label: labelOf(dest),
 });
 
+/** A draft for the preview, so the typer tab has something to show. */
+const SAMPLE_TYPER_TEXT =
+  "We shipped the update on a Friday, which everyone says not to do. It broke the " +
+  "one thing nobody tested, and the release notes still claimed it worked. Next " +
+  "time the checklist runs before the tag, not after it.";
+
 let mock: View = {
   hook_enabled: true,
   clicker_enabled: true,
   macros_enabled: true,
+  typer_enabled: true,
+  replay_enabled: true,
   installed: false,
   close_to_tray: true,
   debug: false,
-  program: "Crossup — preview",
+  program: "Crossup (preview)",
   log: [],
   clicker: { ...DEFAULT_CLICKER },
+  typer: { ...DEFAULT_TYPER, text: SAMPLE_TYPER_TEXT },
+  replay: {
+    recordings: [
+      { id: "replay-1", name: "Open the menu and type a line", events: 214, durationMs: 3_400 },
+    ],
+    selected: "replay-1",
+    recordHotkey: "",
+    replayHotkey: "",
+    repeat: null,
+  },
   autostart: {
     enabled: false,
     entry: null,
@@ -721,12 +881,268 @@ function mockStop(reason: string) {
   };
 }
 
+// ── the typer's stand-in ───────────────────────────────────────────
+
+/** The fastest pace the mock will keep, matching the Rust side. */
+const MAX_TYPER_CPS = 25;
+
+let mockTyper: TyperStatusView = {
+  status: "idle",
+  typed: 0,
+  total: 0,
+  plannedMs: 0,
+  elapsedSecs: 0,
+};
+
+let typerTicker: ReturnType<typeof setInterval> | null = null;
+let typerStartedAt = 0;
+let typerCps = 6;
+let typerChars = 0;
+
+/** The same arithmetic the Rust side does, so the readout matches the run. */
+function mockPlan(text: string, settings: TyperSettings): TyperPlan {
+  const chars = Array.from(text).length;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  const resting = (Math.min(400, Math.max(5, settings.wpm)) * 5) / 60;
+  const asked = settings.deadlineSecs ? chars / Math.max(1, settings.deadlineSecs) : resting;
+  const cps = Math.max(0.5, Math.min(MAX_TYPER_CPS, asked));
+  const charMs = 1_000 / cps;
+  const corrections = Math.round(chars * Math.min(0.25, Math.max(0, settings.typoRate)));
+  return {
+    chars,
+    words,
+    cps,
+    totalMs: Math.round(chars * charMs + corrections * (charMs * 0.9 + 170)),
+    clamped: asked > MAX_TYPER_CPS,
+  };
+}
+
+function mockStartTyper() {
+  const draft = mock.typer;
+  if (!draft.text.trim()) return;
+  const estimate = mockPlan(draft.text, draft);
+  if (typerTicker) clearInterval(typerTicker);
+  typerCps = estimate.cps;
+  typerChars = estimate.chars;
+  typerStartedAt = Date.now();
+  mockTyper = {
+    status: "typing",
+    typed: 0,
+    total: estimate.chars,
+    plannedMs: estimate.totalMs,
+    elapsedSecs: 0,
+  };
+  mockActivity = {
+    ...mockActivity,
+    running: "typer",
+    source: "typing the draft",
+    clicks: 0,
+    elapsedSecs: 0,
+  };
+  typerTicker = setInterval(() => {
+    if (mockTyper.status !== "typing") return;
+    const elapsed = (Date.now() - typerStartedAt) / 1_000;
+    const typed = Math.min(typerChars, Math.floor(elapsed * typerCps));
+    mockTyper = { ...mockTyper, typed, elapsedSecs: elapsed };
+    if (typerChars > 0 && typed >= typerChars) mockStopTyper("done");
+  }, 120);
+}
+
+function mockStopTyper(status: "done" | "stopped") {
+  if (typerTicker) clearInterval(typerTicker);
+  typerTicker = null;
+  mockTyper = { ...mockTyper, status };
+  mockActivity = { ...mockActivity, running: null };
+}
+
+// ── the replayer's stand-in ────────────────────────────────────────
+
+let mockReplay: ReplayStateView = {
+  recording: false,
+  events: 0,
+  durationMs: 0,
+  pending: null,
+  playing: false,
+  status: "idle",
+  played: 0,
+  total: 0,
+  pass: 0,
+  passes: null,
+  note: null,
+};
+
+let replayTicker: ReturnType<typeof setInterval> | null = null;
+
+function mockStartRecording() {
+  if (replayTicker) clearInterval(replayTicker);
+  const startedAt = Date.now();
+  mockReplay = {
+    ...mockReplay,
+    recording: true,
+    events: 0,
+    durationMs: 0,
+    pending: null,
+    status: "recording",
+  };
+  replayTicker = setInterval(() => {
+    mockReplay = {
+      ...mockReplay,
+      events: mockReplay.events + 4,
+      durationMs: Date.now() - startedAt,
+    };
+  }, 150);
+}
+
+function mockStopRecording() {
+  if (replayTicker) clearInterval(replayTicker);
+  replayTicker = null;
+  mockReplay = {
+    ...mockReplay,
+    recording: false,
+    status: "stopped",
+    pending:
+      mockReplay.events > 0
+        ? { events: mockReplay.events, durationMs: mockReplay.durationMs }
+        : null,
+  };
+}
+
+function mockStopReplay() {
+  if (replayTicker) clearInterval(replayTicker);
+  replayTicker = null;
+  mockReplay = { ...mockReplay, playing: false, status: "stopped" };
+  mockActivity = { ...mockActivity, running: null };
+}
+
+function mockStartReplay() {
+  const chosen =
+    mock.replay.recordings.find((entry) => entry.id === mock.replay.selected) ??
+    mock.replay.recordings[0];
+  if (!chosen || replayTicker) return;
+  const passes = mock.replay.repeat;
+  mockReplay = {
+    ...mockReplay,
+    playing: true,
+    status: "replaying",
+    played: 0,
+    total: chosen.events,
+    pass: 1,
+    passes,
+  };
+  mockActivity = { ...mockActivity, running: "replay", source: chosen.name, clicks: 0 };
+  let played = 0;
+  replayTicker = setInterval(() => {
+    if (mockReplay.status !== "replaying") return;
+    played += Math.max(1, Math.round(chosen.events / 16));
+    if (played >= chosen.events) {
+      const nextPass = mockReplay.pass + 1;
+      if (passes !== null && nextPass > passes) {
+        if (replayTicker) clearInterval(replayTicker);
+        replayTicker = null;
+        mockReplay = { ...mockReplay, playing: false, status: "done", played: chosen.events };
+        mockActivity = { ...mockActivity, running: null };
+        return;
+      }
+      played = 0;
+      mockReplay = { ...mockReplay, pass: nextPass, played: 0 };
+      return;
+    }
+    mockReplay = { ...mockReplay, played: (mockReplay.pass - 1) * chosen.events + played };
+  }, 180);
+}
+
 async function mockCall<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   const profile = String(args?.profile ?? "");
 
   switch (command) {
     case "activity":
       return structuredClone(mockActivity) as T;
+    case "replay_state":
+      return structuredClone(mockReplay) as T;
+    case "start_recording":
+      mockStartRecording();
+      return structuredClone(mockReplay) as T;
+    case "stop_recording":
+      mockStopRecording();
+      return structuredClone(mockReplay) as T;
+    case "start_replay":
+      mockStartReplay();
+      return structuredClone(mockReplay) as T;
+    case "stop_replay":
+      mockStopReplay();
+      return structuredClone(mockReplay) as T;
+    case "discard_recording":
+      mockReplay = { ...mockReplay, pending: null };
+      return structuredClone(mockReplay) as T;
+    case "save_recording": {
+      const name = String(args?.name ?? "").trim();
+      const pending = mockReplay.pending;
+      if (name && pending) {
+        const id = `replay-${mock.replay.recordings.length + 1}`;
+        mock = {
+          ...mock,
+          replay: {
+            ...mock.replay,
+            selected: id,
+            recordings: [
+              ...mock.replay.recordings,
+              { id, name, events: pending.events, durationMs: pending.durationMs },
+            ],
+          },
+        };
+        mockReplay = { ...mockReplay, pending: null, status: "idle" };
+      }
+      break;
+    }
+    case "delete_recording": {
+      const id = String(args?.id ?? "");
+      const recordings = mock.replay.recordings.filter((entry) => entry.id !== id);
+      mock = {
+        ...mock,
+        replay: {
+          ...mock.replay,
+          recordings,
+          selected:
+            mock.replay.selected === id
+              ? (recordings[0]?.id ?? "")
+              : mock.replay.selected,
+        },
+      };
+      break;
+    }
+    case "select_recording":
+      mock = { ...mock, replay: { ...mock.replay, selected: String(args?.id ?? "") } };
+      break;
+    case "save_replay_options":
+      mock = {
+        ...mock,
+        replay: {
+          ...mock.replay,
+          recordHotkey: String(args?.record_hotkey ?? ""),
+          replayHotkey: String(args?.replay_hotkey ?? ""),
+          repeat: (args?.repeat ?? null) as number | null,
+        },
+      };
+      break;
+    case "typer_status":
+      return structuredClone(mockTyper) as T;
+    case "typer_plan":
+      return mockPlan(String(args?.text ?? ""), args?.settings as TyperSettings) as T;
+    case "typer_pause":
+      if (mockTyper.status === "typing") mockTyper = { ...mockTyper, status: "paused" };
+      return structuredClone(mockTyper) as T;
+    case "typer_resume":
+      if (mockTyper.status === "paused") mockTyper = { ...mockTyper, status: "typing" };
+      return structuredClone(mockTyper) as T;
+    case "typer_stop":
+      mockStopTyper("stopped");
+      return structuredClone(mockTyper) as T;
+    case "save_typer":
+      mock = { ...mock, typer: args?.typer as TyperSettings };
+      break;
+    case "start_typer":
+      mockStartTyper();
+      break;
     case "save_clicker":
       mock = { ...mock, clicker: args?.clicker as ClickerSettings };
       mockActivity = { ...mockActivity, requestedCps: clicksPerSecond(args?.clicker as ClickerSettings) };

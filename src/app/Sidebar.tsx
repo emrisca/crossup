@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import type { ProfileView } from "@/bridge";
 
 type SidebarProps = {
@@ -50,7 +51,11 @@ export function Sidebar({
                 {profile.global ? "Global" : profile.program}
               </span>
               <span className="hb__profile-meta">
-                {profile.mappings.length > 0 ? profile.mappings.length : "—"}
+                {live
+                  ? "live"
+                  : profile.mappings.length > 0
+                    ? profile.mappings.length
+                    : "-"}
               </span>
             </button>
           );
@@ -59,14 +64,7 @@ export function Sidebar({
 
       <div className="hb__rail-foot">
         <button type="button" className="hb__add" onClick={onAdd}>
-          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M8 3.5v9M3.5 8h9"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+          <Plus size={12} strokeWidth={2} aria-hidden="true" />
           Add program
         </button>
       </div>

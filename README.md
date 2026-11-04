@@ -2,17 +2,20 @@
 
 A Tauri rebuild of the input tools behind
 [valignatev/hitboxer](https://github.com/valignatev/hitboxer), kept under its own
-name so it is never mistaken for the original. Three input tools behind one
+name so it is never mistaken for the original. Five input tools behind one
 window, one per tab:
 
 | Tab | What it does | Where it comes from |
 | --- | --- | --- |
 | **Remapper** | Keyboard remapping and the four SOCD modes, per program | a reconstruction of [valignatev/hitboxer](https://github.com/valignatev/hitboxer) v0.13 |
 | **Auto clicker** | Clicking at the rate it was asked for, with duty cycle, random rate, double clicks, click points, per-monitor edge and corner failsafes, stop zones and program targets | a reimplementation of [Blur-AutoClicker](https://github.com/Blur009/Blur-AutoClicker)'s behaviour |
+| **Typer** | Types a draft into whichever window is in front, at a person's pace, with mistypes, a deadline and a focus guard | the typer from QuillNot, a sibling app in this vault |
+
 | **Macros** | A shortcut that runs a sequence of input, built as a drag-and-drop block tree | the [AutoHotkey](https://www.autohotkey.com/) idea, with a UI in front of it instead of a script |
+| **Replayer** | Records mouse movement, clicks, wheel and keys, then replays them once or forever, each from a single toggle key | built here, on the app's own keyboard and mouse hooks |
 
 The whole thing is a Tauri desktop app with React and the Interior.dev
-components. The three tabs are one process and one window, and only one of them
+components. The five tabs are one process and one window, and only one of them
 drives the desktop at a time.
 
 ## Where each of them came from
@@ -35,6 +38,15 @@ gets wrong.
 and what was taken from it is the idea of a hotkey that replays input. What is
 *not* taken is the language: a macro is a tree of blocks, dragged into place,
 nestable inside a `Repeat`, and validated before it can be saved or run.
+
+**Typer.** Taken from the typer in QuillNot, a sibling app in this vault, and
+re-cut in this app's vocabulary: a draft typed one keystroke at a time, a share
+of it mistyped and corrected, a deadline that paces the whole run, and a stop
+that is read between keystrokes. What is *not* carried over is QuillNot's
+model-written ending ("write the rest"): Crossup has no network client, and a
+button that needs an API key has no place in an input tool. What is added is
+this app's own rule — the run claims the same one-run slot as the clicker and
+the macros, and stands down if the window in front changes.
 
 ## What the artifact said
 
@@ -89,11 +101,13 @@ src-tauri/src/hook.rs     WH_KEYBOARD_LL, foreground program, process list
 src-tauri/src/input.rs    SendInput wrappers, scan codes, monitor rects, the 1 ms timer
 src-tauri/src/clicker.rs  the auto clicker engine, scheduled on a grid
 src-tauri/src/macros.rs   the block tree, its validation, and the interpreter
+src-tauri/src/typer.rs    the typer: its plan, its pace, and the focus guard
+src-tauri/src/replay.rs   the replayer: capture from the hooks, and the replay drive
 src-tauri/src/runtime.rs  one run at a time, and the global shortcuts
 src-tauri/src/mouse_hotkeys.rs  mouse-button shortcuts, watched from the mouse hook
 src-tauri/src/keys.rs     scan-code table with labels and extended flags
 src-tauri/src/lib.rs      Tauri commands, tray, persistence, single-instance
-src/app/                  the UI: three tabs, dialogs, the block builder
+src/app/                  the UI: five tabs, dialogs, the block builder
 src/picker/               the picker's own page and styles (transparent, no app chrome)
 src/theme/                UI-Colors palette engine (from the Interior skill)
 src/components/interior/  the Interior.dev components, copied unchanged
@@ -127,7 +141,7 @@ fails here with "error calling dlltool" long before Tauri is involved.
 Tests and checks:
 
 ```bash
-cd src-tauri && cargo test   # 115 tests: SOCD modes, click grid, failsafes, macros, settings format,
+cd src-tauri && cargo test   # 123 tests: SOCD modes, click grid, failsafes, macros, settings format,
                              #             overlay coordinate maths, sign-in entry, mouse shortcuts
 npx tsc --noEmit             # frontend types
 ```
@@ -141,6 +155,12 @@ first line of its notes. **Update now** downloads, verifies the signature and
 installs it; **Later** hides that version until the next launch. Nothing installs
 without the click, and a failed check is silent, because a machine with no
 network is not a machine with a problem.
+
+Settings has the same check on demand: it shows the installed version, a
+**Check for updates** button, the reply (newer release, up to date, or what went
+wrong), and the first lines of the release notes. A found update installs from
+there too. The check itself still runs in Rust; the window only reads the state
+and asks for another.
 
 The keypair already exists: `.secrets/crossup-updater.key` is the private half,
 which Git ignores, and its public half is in `plugins.updater.pubkey` in
@@ -189,9 +209,49 @@ ever be offered.
   raises and focuses the window that is already running and exits, so two hooks
   can never fight over the same keys.
 - **Backup and restore** — settings.json holds every setting: profiles, macros,
-  the clicker, the switches and the sign-in executable, so a copy of it rebuilds
-  Crossup on another machine. settings.socd is the original format and carries
-  profiles and mappings only.
+  the clicker, the typer, the recordings, the switches and the sign-in
+  executable. A copy of it rebuilds Crossup on another machine. settings.socd is
+  the original format and carries profiles and mappings only.
+
+### Replayer
+
+- **Recording.** Mouse movement, clicks, wheel and key presses, each stamped
+  with when it happened. The recorder is fed by the hooks the remapper already
+  uses, so it needs no second hook and cannot record its own replays: injected
+  input is filtered out at the hook.
+- **Two shortcuts, each one key.** Record and replay are separate toggles.
+  Press to begin, press again to stop.
+- **The shortcut is not recorded.** While recording, the keys and buttons that
+  make up either shortcut are dropped instead of written down. A recording that
+  ends on the chord therefore replays as it was recorded, rather than replaying
+  its own stop.
+- **The window hides.** Starting a recording hides Crossup, so the program
+  underneath can be reached and the window is not part of the capture. The
+  record shortcut brings it back, with the recording waiting to be named. A
+  record shortcut is required before recording, because without one there would
+  be no way back.
+- **Save, keep, delete.** A finished recording is kept only once it has a name,
+  and recordings live in settings.json beside the other settings.
+- **Once or forever.** A replay runs a set number of passes or until the replay
+  shortcut stops it, and claims the same one-run slot as every other tool.
+
+### Typer
+
+- **Text to type.** The draft itself, kept in settings.json, so a half-written
+  paragraph is still there after a restart.
+- **Pace.** Words a minute, read back as keys a second and the gap between them.
+  Five characters to a word, the count every words-a-minute figure uses.
+- **Typo rate.** The share of characters mistyped and corrected: a neighbouring
+  key, a pause while it is noticed, a backspace, then the right one.
+- **Finish by.** A deadline paces the whole run so the last keystroke lands on
+  time. Anything faster than 25 keys a second is clamped, and the tab says so.
+- **Countdown.** Start is pressed in this window, so the run waits before its
+  first keystroke. Click into the target window meanwhile.
+- **The focus guard.** The window in front when Start is pressed is the one that
+  gets the text. If anything else comes forward, the run stops where it stands
+  rather than typing the rest into the wrong place.
+- **Pause, resume, stop.** And a start/stop shortcut, both read between
+  keystrokes, so a stop lands in about a frame.
 
 ### Auto clicker
 

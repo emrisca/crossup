@@ -313,7 +313,7 @@ export function MacrosTab({
                 />
                 <span className="hb__profile-name">{entry.name}</span>
                 <span className="hb__profile-meta">
-                  {live ? "running" : entry.hotkey || "—"}
+                  {live ? "running" : entry.hotkey || "-"}
                 </span>
               </button>
             );
@@ -321,8 +321,8 @@ export function MacrosTab({
         </div>
         <div className="hb__rail-foot">
           <p className="hb__card-note hb__dim" style={{ margin: 0, padding: "0 4px" }}>
-            A macro runs from its shortcut, or from the Run button. Only one run —
-            clicker or macro — is ever going at a time.
+            A macro runs from its shortcut, or from the Run button. Only one run goes
+            at a time, clicker or macro.
           </p>
         </div>
       </aside>
@@ -442,7 +442,7 @@ export function MacrosTab({
             <Modal
               open={deleteOpen}
               onClose={() => setDeleteOpen(false)}
-              title={`Delete “${draft.name}”?`}
+              title={`Delete "${draft.name}"?`}
               description="The macro and its blocks are removed. Its shortcut is freed for another macro."
               maxWidth={400}
               footer={
@@ -603,7 +603,7 @@ function BlockBuilder({
 
   return (
     <section
-      className="hb__builder"
+      className="hb__builder hb__builder--lead"
       data-dragging={drag ? "true" : undefined}
       onDragOver={autoScroll}
       onDragEnd={() => {
@@ -613,7 +613,7 @@ function BlockBuilder({
     >
       <div className="pal">
         <span className="hb__rail-label" style={{ padding: "0 2px 6px" }}>
-          Blocks — drag one in, or click to add it at the end
+          Blocks. Drag one in, or click to add it at the end.
         </span>
         <div className="pal__row">
           {BLOCK_ORDER.map((kind) => (
@@ -633,7 +633,7 @@ function BlockBuilder({
           ))}
           {/* A drag is the click block's mode, but it sits here as its own
               button: it is the block people reach for by name, and one drop
-              puts it anywhere in the tree — including inside a Repeat. */}
+              puts it anywhere in the tree, including inside a Repeat. */}
           <button
             type="button"
             className="pal__item"
@@ -882,8 +882,8 @@ function Tail({
  * A relative move written as a direction and a distance, or as two numbers.
  *
  * Both are the same x and y: left is a negative x, down a positive y. Working
- * in a direction is how a nudge is actually thought about — a jiggle is twenty
- * pixels right and back — while a diagonal needs the two numbers, so the block
+ * in a direction is how a nudge is actually thought about: a jiggle is twenty
+ * pixels right and back, while a diagonal needs the two numbers, so the block
  * keeps both and the mode only decides which one is on screen.
  */
 function OffsetFields({
@@ -1246,7 +1246,7 @@ function BlockFields({
                 title={
                   step.mode === "drag"
                     ? "How long the button stays down where the drag landed before letting go."
-                    : "How long the button stays down. A tap never presses for less than 15 ms — one frame — because a game can miss a press and a release that arrive together."
+                    : "How long the button stays down. A tap never presses for less than 15 ms, one frame, because a game can miss a press and a release that arrive together."
                 }
               />
               <span className="hb__field-label">

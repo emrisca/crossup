@@ -1,7 +1,7 @@
 {
   "name": "crossup",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "Key remapper with SOCD modes, an auto clicker, and a drag-and-drop macro builder.",
   "scripts": {
@@ -12,6 +12,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "lucide-react": "^1.68.0",
     "motion": "^12.42.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

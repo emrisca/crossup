@@ -65,7 +65,7 @@ const duration = (ms: number): string => {
 };
 
 /** The gap between clicks at a rate, for the readout above the run. */
-const interval = (cps: number): string => (cps > 0 ? duration(1_000 / cps) : "—");
+const interval = (cps: number): string => (cps > 0 ? duration(1_000 / cps) : "-");
 
 export function AutoClickerTab({
   view,
@@ -133,7 +133,7 @@ export function AutoClickerTab({
    *
    * The zones and points already placed travel with the request, so the new one
    * is drawn against them rather than blind, and `index` says which row the
-   * answer belongs to — `-1` for a new one.
+   * answer belongs to, with `-1` for a new one.
    */
   const draw = useCallback(
     (purpose: "zone" | "point", index: number) => {
@@ -308,7 +308,7 @@ export function AutoClickerTab({
           />
           <HotkeyField
             label="Start shortcut"
-            note="Press a key combination or a mouse button — a side button works too, recorded as Mouse4 or Mouse5 — and a wheel notch is recorded as WheelUp or WheelDown"
+            note="Press a key combination, a mouse button, or a wheel notch. A side button is recorded as Mouse4 or Mouse5, and a wheel notch as WheelUp or WheelDown."
             value={draft.hotkey}
             onChange={(hotkey) => update({ hotkey })}
           />
@@ -394,6 +394,7 @@ export function AutoClickerTab({
         </Card>
 
         <Card
+          lead
           title="How often"
           note="The rate is kept against an absolute clock, so a slow moment does not slow the rest of the run."
         >
@@ -456,7 +457,7 @@ export function AutoClickerTab({
               <span className="hb__readout">
                 ±{draft.variation}%
                 {cycle > 0 && draft.variation > 0
-                  ? ` · ${duration(Math.max(1, cycle * (1 - draft.variation / 100)))}–${duration(cycle * (1 + draft.variation / 100))}`
+                  ? ` · ${duration(Math.max(1, cycle * (1 - draft.variation / 100)))} to ${duration(cycle * (1 + draft.variation / 100))}`
                   : ""}
               </span>
             </Line>
@@ -502,8 +503,8 @@ export function AutoClickerTab({
 
         <p className="hb__card-note hb__tail-note">
           Windows paces at best a millisecond, so a run asks the kernel for a 1 ms
-          timer while it goes — and gives it back when it stops. If that is
-          refused (it is reported on the right) a high rate will come out lower.
+          timer while it goes and gives it back when it stops. If that request is
+          refused, which is reported on the right, a high rate will come out lower.
         </p>
       </section>
 
@@ -520,7 +521,7 @@ export function AutoClickerTab({
                 ? `${activity.achievedCps.toFixed(1)} / ${activity.requestedCps.toFixed(1)}`
                 : activity?.last
                   ? `${activity.last.achievedCps.toFixed(1)} / ${activity.last.requestedCps.toFixed(1)}`
-                  : "—"
+                  : "-"
             }
             label="Achieved / asked"
           />
@@ -628,13 +629,13 @@ export function AutoClickerTab({
         <Card title="When to stop" tight>
           <Line
             label="Escape ×3"
-            note="Three quick taps of Escape stop the run, wherever the cursor is and whatever is in front. Always on — the keyboard is the one way out that a runaway clicker cannot take away."
+            note="Three quick taps of Escape stop the run, wherever the cursor is and whatever is in front. It is always on, because the keyboard is the one way out that a runaway clicker cannot take away."
           >
             <span className="hb__field-label">always on</span>
           </Line>
           <Line
             label="Screen edges"
-            note="Stops the run when the cursor reaches an edge — the way to get out from under a fast clicker."
+            note="Stops the run when the cursor reaches an edge, which is the way out from under a fast clicker."
           >
             <Switch
               checked={draft.edgeStop.enabled}
@@ -687,7 +688,7 @@ export function AutoClickerTab({
 
           <Line
             label="Screen corners"
-            note="The same idea for the corners — where a cursor ends up when it is thrown at the screen."
+            note="The same idea for the corners, where a cursor ends up when it is thrown at the screen."
           >
             <Switch
               checked={draft.cornerStop.enabled}
@@ -734,7 +735,7 @@ export function AutoClickerTab({
 
           <Line
             label="Only in these programs"
-            note="The run waits — it does not stop — while anything else is in front."
+            note="The run waits while anything else is in front. It does not stop."
           >
             <Switch
               checked={draft.targets.enabled}
@@ -958,15 +959,20 @@ export function Card({
   title,
   note,
   tight,
+  lead,
   children,
 }: {
   title: string;
   note?: string;
   tight?: boolean;
+  /** The one lifted surface on the page. Everything else is a quiet group. */
+  lead?: boolean;
   children: React.ReactNode;
 }) {
   return (
-    <section className={`hb__card${tight ? " hb__card--tight" : ""}`}>
+    <section
+      className={`hb__card${tight ? " hb__card--tight" : ""}${lead ? " hb__card--lead" : ""}`}
+    >
       <h2 className="hb__card-title">{title}</h2>
       {note && <p className="hb__card-note">{note}</p>}
       {children}

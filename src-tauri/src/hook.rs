@@ -20,7 +20,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
     SetWindowsHookExW, TranslateMessage, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED,
-    LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_SYSKEYDOWN,
+    LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
+    WM_RBUTTONUP, WM_SYSKEYDOWN, WM_XBUTTONDOWN, WM_XBUTTONUP,
 };
 
 use crate::config::Settings;
@@ -129,6 +131,13 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
         if event.flags.0 & LLKHF_INJECTED.0 == 0 {
             let message = wparam.0 as u32;
             let down = message == WM_KEYDOWN || message == WM_SYSKEYDOWN;
+            let extended = event.flags.0 & LLKHF_EXTENDED.0 != 0;
+            let scan = keys::normalize(event.scanCode as u16, extended);
+
+            // The recorder sees the physical key, before any remap, and does
+            // its own locking: it has to work with the remapper switched off,
+            // and a replay has to press what the person pressed.
+            crate::replay::capture_key(scan, down);
 
             if let Some(shared) = SHARED.get() {
                 if let Ok(mut state) = shared.lock() {
@@ -148,8 +157,6 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
                     // as "repeat" marked every release as one and every repeat
                     // as a fresh press. The engine already knows what it is
                     // holding, so an auto-repeat is caught by it instead.
-                    let extended = event.flags.0 & LLKHF_EXTENDED.0 != 0;
-                    let scan = keys::normalize(event.scanCode as u16, extended);
                     let decision = state.engine.on_key(scan, down, false);
 
                     for note in &decision.notes {
@@ -177,11 +184,45 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
     if code == HC_ACTION as i32 {
         let event = &*(lparam.0 as *const MSLLHOOKSTRUCT);
         if !is_ours(event.flags) {
+            capture_mouse(wparam.0 as u32, event);
             crate::mouse_hotkeys::dispatch(wparam.0 as u32, event.mouseData);
         }
     }
 
     CallNextHookEx(None, code, wparam, lparam)
+}
+
+/// Feed the recorder with a real mouse event.
+///
+/// The coordinates come from the event rather than from the cursor: a low-level
+/// hook runs before the input is delivered, and asking Windows for the cursor
+/// position would record where the pointer is about to be rather than where the
+/// event happened.
+fn capture_mouse(message: u32, event: &MSLLHOOKSTRUCT) {
+    let x = event.pt.x;
+    let y = event.pt.y;
+    match message {
+        WM_MOUSEMOVE => crate::replay::capture_move(x, y),
+        WM_LBUTTONDOWN => crate::replay::capture_button("left", true, x, y),
+        WM_LBUTTONUP => crate::replay::capture_button("left", false, x, y),
+        WM_RBUTTONDOWN => crate::replay::capture_button("right", true, x, y),
+        WM_RBUTTONUP => crate::replay::capture_button("right", false, x, y),
+        WM_MBUTTONDOWN => crate::replay::capture_button("middle", true, x, y),
+        WM_MBUTTONUP => crate::replay::capture_button("middle", false, x, y),
+        WM_XBUTTONDOWN | WM_XBUTTONUP => {
+            let which = (event.mouseData >> 16) & 0xFFFF;
+            let button = if which == 1 { "back" } else { "forward" };
+            crate::replay::capture_button(button, message == WM_XBUTTONDOWN, x, y);
+        }
+        WM_MOUSEWHEEL => {
+            // The high word is a signed delta in 120ths of a notch.
+            let delta = ((event.mouseData >> 16) & 0xFFFF) as u16 as i16;
+            if delta != 0 {
+                crate::replay::capture_wheel(delta as i32 / 120, x, y);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Whether a mouse event is the app's own `SendInput` output rather than the

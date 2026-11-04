@@ -131,7 +131,8 @@ export function RemapperTab({
         {!profile.global && !profile.active && (
           <p className="hb__warn">
             This profile is switched off, so its mappings are skipped while{" "}
-            {profile.program} is in front — the one it would otherwise apply to.
+            {profile.program} is in front, which is the program they would otherwise
+            apply to.
           </p>
         )}
 
