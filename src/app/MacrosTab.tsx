@@ -174,6 +174,10 @@ export function MacrosTab({
   // the one this window just sent.
   useEffect(() => {
     if (!selected) {
+      // Forget what was last sent. A macro that comes back through undo has the
+      // same definition as the one that left, so the comparison below would
+      // skip it and leave the page on the empty state it was deleted into.
+      sent.current = "";
       setDraft(null);
       return;
     }
@@ -436,7 +440,12 @@ export function MacrosTab({
                 onClick={() => {
                   const next = view.macros.find((entry) => entry.id !== draft.id);
                   void run("delete_macro", { id: draft.id });
-                  pushUndo(`Deleted the macro "${draft.name}"`, () => setSelectedId(draft.id));
+                  pushUndo(`Deleted the macro "${draft.name}"`, async () => {
+                    await run("undo_delete");
+                    // The engine puts the macro back; the tab makes it the open
+                    // one again, which is the state the delete walked out of.
+                    setSelectedId(draft.id);
+                  });
                   setSelectedId(next?.id ?? null);
                 }}
               >
@@ -638,7 +647,11 @@ function BlockBuilder({
             setDrop={setDrop}
             onDropTarget={applyDrop}
             onReplace={(path, next) => onChange(replaceStep(steps, path, next))}
-            onRemove={(path) => onChange(removeStep(steps, path))}
+            onRemove={(path) => {
+              const previous = steps;
+              onChange(removeStep(steps, path));
+              pushUndo("Removed a block", () => onChange(previous));
+            }}
             onSwap={(path, by) => onChange(swap(steps, path, by))}
           />
         ))}

@@ -99,6 +99,30 @@ the selection that went with it, so a recording returns to its place and stays
 selected. The window never holds a recording's events, which is why the restore
 lives in Rust rather than in the tab.
 
+## Round four: undo restores the view, not just the row
+
+| Macro after Undo | Recording after Undo |
+| --- | --- |
+| ![Macro returned and selected](undo-macro-restored.png) | ![Recording returned and selected](undo-recording-restored.png) |
+
+Measured from the rendered state after pressing Undo: the macro name field reads
+`Burst fire`, the rail row is current, and the empty state is gone. The recording
+list holds one row, that row is `aria-current`, and the subtitle reads
+`Open the menu and type a line · 214 actions · 3.4 s`.
+
+The fault was in the tab, not the engine. The delete cleared the selection, and
+the effect that adopts the selected macro skips a definition equal to the last
+one it sent. A restored macro is exactly that, so the page stayed on the empty
+state with the macro sitting in the rail. Clearing the last-sent marker when the
+selection empties lets the restored macro be adopted.
+
+Clicker row deletes now go through the same bar and put the whole draft back, so
+a removed point, zone or program entry returns with the rest of the settings
+untouched. Bulk Clear buttons are resets and carry no undo; the review says why.
+
+The sticky header was re-measured on this build (`position: sticky`, header and
+page both at 150 at full scroll), so the round-three evidence still stands.
+
 ## Criteria, scored
 
 | Criterion | Score | Evidence |
@@ -109,7 +133,7 @@ lives in Rust rather than in the tab.
 | States | 9.5 / 10 | Empty states name the next action, the boot frame is a skeleton, errors use `role="status"`, disabled buttons fade to 50 percent, focus is the 2px accent ring from `styles.css`. Delete now has a recovery state rather than a question. |
 | Motion | 9 / 10 | Press depth, panel lift, a 160ms undo slide. Reduced motion is handled in the tab strip and in the undo bar's media query. |
 | Hierarchy | 9.5 / 10 | One lead surface per tab, hairline groups elsewhere, and a title row that stays put while the controls move. |
-| Reversibility | 9.5 / 10 | Recording, macro and mapping deletes are undoable, with the item put back where it was. |
+| Reversibility | 9.5 / 10 | Every row delete is undoable: recording, macro, mapping, click point, zone, program entry and macro block. Undo puts the item back and restores the view around it, including the open macro and the selected recording. |
 | Copy | 9.5 / 10 | The unslop pass rewrote 86 strings; remaining middle dots join two short values only. |
 
 Overall 9.5 / 10, with typography as the reason it is not a ten.

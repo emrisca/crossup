@@ -110,11 +110,10 @@ function Shell() {
   // every other Windows app uses does the same thing without reaching the bar.
   const undoEntry = useUndoEntry();
   const undoNow = useCallback(async () => {
-    const after = undoEntry?.after;
+    const action = undoEntry?.undo;
     clearUndo();
-    await run("undo_delete");
-    after?.();
-  }, [run, undoEntry]);
+    await action?.();
+  }, [undoEntry]);
 
   useEffect(() => {
     if (!undoEntry) return;

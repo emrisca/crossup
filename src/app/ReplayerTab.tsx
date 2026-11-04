@@ -298,7 +298,9 @@ export function ReplayerTab({
                   disabled={busy}
                   onClick={() => {
                     void run("delete_recording", { id: entry.id });
-                    pushUndo(`Deleted the recording "${entry.name}"`);
+                    pushUndo(`Deleted the recording "${entry.name}"`, () =>
+                      run("undo_delete"),
+                    );
                   }}
                 >
                   ×

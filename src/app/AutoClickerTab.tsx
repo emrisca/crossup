@@ -20,6 +20,7 @@ import { Switch } from "./Dialogs";
 import { HotkeyField } from "./HotkeyField";
 import { KeyBinder } from "./Mappings";
 import { NumberField } from "./NumberField";
+import { pushUndo } from "./undo";
 
 const UNIT_MS: Record<ClickerSettings["rateUnit"], number> = {
   second: 1_000,
@@ -251,6 +252,18 @@ export function AutoClickerTab({
       update({ targets: { ...draft.targets, programs: [...draft.targets.programs, entry] } });
     }
     setProgram("");
+  };
+
+  /** Put the clicker back the way it was a moment ago. The write is immediate:
+   *  the bar is the only copy of the state a removed row lived in. */
+  const restore = (previous: ClickerSettings) => {
+    if (timer.current) {
+      window.clearTimeout(timer.current);
+      timer.current = null;
+    }
+    sent.current = JSON.stringify(previous);
+    setDraft(previous);
+    void run("save_clicker", { clicker: previous });
   };
 
   const patchPoint = (index: number, patch: Partial<ClickPoint>) =>
@@ -579,9 +592,13 @@ export function AutoClickerTab({
                   type="button"
                   className="hb__delete"
                   aria-label={`Remove the point at ${point.x}, ${point.y}`}
-                  onClick={() =>
-                    update({ points: draft.points.filter((_, at) => at !== index) })
-                  }
+                  onClick={() => {
+                    const previous = draft;
+                    update({ points: draft.points.filter((_, at) => at !== index) });
+                    pushUndo(`Removed the point at ${point.x}, ${point.y}`, () =>
+                      restore(previous),
+                    );
+                  }}
                 >
                   ×
                 </button>
@@ -767,14 +784,18 @@ export function AutoClickerTab({
                     <button
                       type="button"
                       aria-label={`Remove ${entry}`}
-                      onClick={() =>
+                      onClick={() => {
+                        const previous = draft;
                         update({
                           targets: {
                             ...draft.targets,
                             programs: draft.targets.programs.filter((name) => name !== entry),
                           },
-                        })
-                      }
+                        });
+                        pushUndo(`Removed ${entry} from the program list`, () =>
+                          restore(previous),
+                        );
+                      }}
                     >
                       ×
                     </button>
@@ -853,13 +874,15 @@ export function AutoClickerTab({
                           type="button"
                           className="hb__delete"
                           aria-label={`Remove zone ${index + 1}`}
-                          onClick={() =>
+                          onClick={() => {
+                            const previous = draft;
                             update({
                               stopZones: draft.stopZones.filter(
                                 (_, at) => at !== index,
                               ),
-                            })
-                          }
+                            });
+                            pushUndo(`Removed zone ${index + 1}`, () => restore(previous));
+                          }}
                         >
                           ×
                         </button>

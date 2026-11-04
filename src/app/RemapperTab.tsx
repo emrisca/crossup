@@ -142,7 +142,9 @@ export function RemapperTab({
           onAdd={() => onEdit(null)}
           onDelete={(index, mapping) => {
             void run("remove_mapping", { profile: profile.id, index });
-            pushUndo(`Removed the ${mapping.source_label} mapping`);
+            pushUndo(`Removed the ${mapping.source_label} mapping`, () =>
+              run("undo_delete"),
+            );
           }}
           onPreset={(preset) => run("apply_preset", { profile: profile.id, preset })}
         />

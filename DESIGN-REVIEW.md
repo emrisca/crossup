@@ -27,7 +27,7 @@ Each line is judged against the running app, not the intent. Evidence lives in
 | States | 9.5 / 10 | Empty states name the next action (mappings, recordings, macros, zones), the boot frame is a skeleton shaped like the window, errors land in a `role="status"` row, and disabled press buttons drop to 50 percent. Focus is a 2px accent ring from `styles.css`, because the controls are native elements rather than divs. |
 | Motion | 9 / 10 | Press depth, panel lift and the undo bar slide, all under 200ms. Reduced motion is handled in the tab strip through `useReducedMotion` and in the undo bar through a `prefers-reduced-motion` block. |
 | Hierarchy | 9.5 / 10 | One lead surface per tab, quiet groups divided by hairlines everywhere else, and a title row that stays in view so the tool and its live state never scroll away. |
-| Reversibility | 9.5 / 10 | Deleting a recording, a macro or a mapping removes it immediately and offers undo for twelve seconds, with Ctrl+Z as the same action. The engine keeps the removed item, index and selection, so the item returns where it was. |
+| Reversibility | 9.5 / 10 | Every row delete is immediate and undoable for twelve seconds, with Ctrl+Z as the same action: recording, macro, mapping, click point, zone, program entry and macro block. Undo restores the item, its position and the view around it, so a macro comes back open and a recording comes back selected. Bulk Clear buttons are resets and are documented as such. |
 | Copy | 9.5 / 10 | The unslop pass removed colon connectors, passive voice, personified code and clipped fragments across 86 strings. Remaining middle dots join two short values only. |
 
 ## Problems
@@ -134,6 +134,36 @@ events: the list only carries the count and the length.
 Sticky is a CSS-only change. The page column is the scroll container, so the
 title row can pin to it directly; no scroll listener, no second render, and no
 measurement to keep in sync with the layout.
+
+## Round four, shipped in 0.2.3
+
+The undo shipped in 0.2.2 put the item back but not the view. A macro returned to
+the rail while the page still read "No macro selected": deleting it cleared the
+selection and the draft, and the effect that adopts the selected macro compares
+an incoming definition with the last one it sent. A restored macro is identical
+to the one that left, so the comparison skipped it. Two changes fix it. The undo
+entry now carries its own restore action, so the tab that deleted can select the
+item again once the engine has put it back, and clearing the selection also
+clears the last-sent marker, so a returning macro is adopted like any other.
+
+| Delete | Restores | State that comes back |
+| --- | --- | --- |
+| Recording | the item at its old index | selection, and the replayer's subtitle and Play button follow it |
+| Macro | the item at its old index | the macro is the open one again, with its blocks and shortcut |
+| Mapping | the item at its old index | the profile stays selected and the row reappears in place |
+| Click point, zone, program entry | the clicker draft as it stood | every other control keeps the value it had |
+| Macro block | the builder's block list as it stood | the block returns in its position |
+
+Bulk buttons labelled Clear (the typer draft, the clicker's points and zones) are
+resets rather than deletes. They empty a list that is on screen, they are not a
+one-press mistake on a row, and a bar offering to undo "Clear" would be the same
+button in another place. They are left without undo on purpose, not by omission.
+There is also no profile delete in the window: the command exists in the backend
+but no control calls it, so there is nothing to restore.
+
+Verified from the rendered state, not the command's return: after Undo the macro
+name field reads `Burst fire`, the rail row is current, and the empty state is
+gone; the recording row comes back `aria-current` with the subtitle naming it.
 
 ## What I could not check
 
