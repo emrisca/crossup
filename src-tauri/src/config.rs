@@ -258,6 +258,72 @@ impl Settings {
 }
 
 impl Settings {
+    /// Make every shortcut slot usable.
+    ///
+    /// A settings file outlives the engine that wrote it. One carried `Mouse5`
+    /// as the typer's shortcut, which the engine refuses because a mouse button
+    /// cannot type, and the replayer's two were empty because the tab's save was
+    /// rejected before it reached the handler. Left alone, both read as a feature
+    /// that does nothing: the field shows a shortcut and the key never fires.
+    /// Every slot now comes up with a combination that works, and anything that
+    /// could never fire is replaced with a note saying what it was.
+    pub fn heal_shortcuts(&mut self) -> Vec<String> {
+        let mut notes = Vec::new();
+
+        let typer_was = self.typer.hotkey.trim().to_string();
+        // Asked of the same parser the shortcut layer asks: a mouse button reads
+        // as a shortcut everywhere else in the app.
+        let typer_usable =
+            !typer_was.is_empty() && crate::mouse_hotkeys::parse(&typer_was).is_none();
+        if !typer_usable {
+            notes.push(if typer_was.is_empty() {
+                format!(
+                    "the typer had no shortcut, so it now uses {}",
+                    crate::typer::DEFAULT_HOTKEY
+                )
+            } else {
+                format!(
+                    "the typer shortcut “{typer_was}” could never fire, because a mouse button cannot start typing; it now uses {}",
+                    crate::typer::DEFAULT_HOTKEY
+                )
+            });
+            self.typer.hotkey = crate::typer::DEFAULT_HOTKEY.to_string();
+        }
+
+        if self.replay.record_hotkey.trim().is_empty() {
+            notes.push(format!(
+                "the replayer had no record shortcut, so it now uses {}",
+                crate::replay::DEFAULT_RECORD_HOTKEY
+            ));
+            self.replay.record_hotkey = crate::replay::DEFAULT_RECORD_HOTKEY.to_string();
+        }
+        if self.replay.replay_hotkey.trim().is_empty() {
+            notes.push(format!(
+                "the replayer had no replay shortcut, so it now uses {}",
+                crate::replay::DEFAULT_REPLAY_HOTKEY
+            ));
+            self.replay.replay_hotkey = crate::replay::DEFAULT_REPLAY_HOTKEY.to_string();
+        }
+        // Two slots on one chord means one of them can never fire: the layer
+        // takes the first and refuses the second with an error nobody reads.
+        if self
+            .replay
+            .record_hotkey
+            .eq_ignore_ascii_case(&self.replay.replay_hotkey)
+        {
+            notes.push(format!(
+                "the replayer's record and replay shortcuts were both “{}”, so replay now uses {}",
+                self.replay.replay_hotkey,
+                crate::replay::DEFAULT_REPLAY_HOTKEY
+            ));
+            self.replay.replay_hotkey = crate::replay::DEFAULT_REPLAY_HOTKEY.to_string();
+        }
+
+        notes
+    }
+}
+
+impl Settings {
     pub fn profile(&self, id: &str) -> Option<&Profile> {
         self.profiles.iter().find(|profile| profile.id == id)
     }
@@ -564,5 +630,63 @@ mod tests {
         settings.profile_mut("p").unwrap().active = true;
         assert_eq!(settings.profile_for("game.exe").unwrap().id, "p");
         assert!(settings.profile_for("Other.exe").unwrap().is_global());
+    }
+}
+
+#[cfg(test)]
+mod shortcut_healing {
+    use super::*;
+
+    #[test]
+    fn a_legacy_mouse_shortcut_on_the_typer_is_replaced() {
+        let mut settings = Settings::default();
+        settings.typer.hotkey = "Mouse5".to_string();
+        let notes = settings.heal_shortcuts();
+        assert_eq!(settings.typer.hotkey, crate::typer::DEFAULT_HOTKEY);
+        assert!(notes.iter().any(|note| note.contains("Mouse5")), "{notes:?}");
+    }
+
+    #[test]
+    fn the_replayers_empty_slots_come_up_working() {
+        let mut settings = Settings::default();
+        settings.replay.record_hotkey = String::new();
+        settings.replay.replay_hotkey = String::new();
+        let notes = settings.heal_shortcuts();
+        assert_eq!(
+            settings.replay.record_hotkey,
+            crate::replay::DEFAULT_RECORD_HOTKEY
+        );
+        assert_eq!(
+            settings.replay.replay_hotkey,
+            crate::replay::DEFAULT_REPLAY_HOTKEY
+        );
+        assert_eq!(notes.len(), 2, "{notes:?}");
+    }
+
+    #[test]
+    fn a_working_shortcut_is_left_alone() {
+        let mut settings = Settings::default();
+        settings.typer.hotkey = "Control+Shift+9".to_string();
+        assert!(settings.heal_shortcuts().is_empty());
+        assert_eq!(settings.typer.hotkey, "Control+Shift+9");
+    }
+
+    #[test]
+    fn two_tools_on_one_chord_are_split_apart() {
+        let mut settings = Settings::default();
+        settings.replay.replay_hotkey = crate::replay::DEFAULT_RECORD_HOTKEY.to_string();
+        let notes = settings.heal_shortcuts();
+        assert_eq!(
+            settings.replay.replay_hotkey,
+            crate::replay::DEFAULT_REPLAY_HOTKEY
+        );
+        assert!(notes.iter().any(|note| note.contains("both")), "{notes:?}");
+    }
+
+    #[test]
+    fn the_defaults_need_no_healing() {
+        let mut settings = Settings::default();
+        assert!(settings.heal_shortcuts().is_empty());
+        assert_eq!(settings.typer.hotkey, crate::typer::DEFAULT_HOTKEY);
     }
 }

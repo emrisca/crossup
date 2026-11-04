@@ -160,6 +160,8 @@ export type Activity = {
   last: Outcome | null;
   lastMacro: MacroReport | null;
   hotkeyErrors: string[];
+  /** Something asked for that could not happen, shown in the same strip. */
+  alerts: string[];
 };
 
 // ── macros ─────────────────────────────────────────────────────────
@@ -820,6 +822,7 @@ let mockActivity: Activity = {
   last: null,
   lastMacro: null,
   hotkeyErrors: [],
+  alerts: [],
 };
 
 let mockTicker: ReturnType<typeof setInterval> | null = null;

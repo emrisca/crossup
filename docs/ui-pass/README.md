@@ -100,6 +100,26 @@ the selection that went with it, so a recording returns to its place and stays
 selected. The window never holds a recording's events, which is why the restore
 lives in Rust rather than in the tab.
 
+## Round eight: shortcuts that work on a fresh launch
+
+![The replayer's refusal in the strip above the tabs](packaged-replay-alert.png)
+
+The typer and the replayer ship with working combinations (`Ctrl+Alt+T`,
+`Ctrl+Alt+R`, `Ctrl+Alt+P`), and a settings file that holds something the engine
+can never honour — a mouse button as the typer's shortcut, or empty replayer
+slots — is healed on load, said out loud, and written back before the window
+opens.
+
+| Pressed, on the packaged build | Observed |
+| --- | --- |
+| `Ctrl+Alt+T` into a scratch window | 43 characters typed; clock 0 idle, 0.3 → 2.6 s typing, frozen at 2.6 s |
+| `Ctrl+Alt+P` with nothing recorded | the alert in the picture, nothing started |
+| `Ctrl+Alt+R`, `xyz`, `Ctrl+Alt+R`, `Ctrl+Alt+P` | 6 events recorded, then `xyz` typed back into an emptied window |
+
+The recorder drops key events that carry no scan code, because they replay as
+nothing at all; it also ignores injected input, so the capture half of the test
+used an evidence-only build with that guard opened. The shipped build keeps it.
+
 ## Round seven: the typer and replayer shortcuts
 
 No pictures this round: the evidence is what the engine answers, read from the

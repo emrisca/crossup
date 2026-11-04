@@ -36,6 +36,12 @@ use crate::runtime::RuntimeState;
 /// The name a replay is reported under in `activity`.
 pub const REPLAY: &str = "replay";
 
+/// The shortcuts a fresh replayer comes up with. Both used to start empty, so
+/// the tab's fields read "not set" and the keys did nothing until somebody went
+/// looking for a feature that had never been wired up.
+pub const DEFAULT_RECORD_HOTKEY: &str = "Control+Alt+R";
+pub const DEFAULT_REPLAY_HOTKEY: &str = "Control+Alt+P";
+
 /// The most events one recording may hold. At roughly sixty mouse moves a
 /// second this is about fifteen minutes of continuous movement; past it the run
 /// is left as it is rather than filling the settings file.
@@ -121,10 +127,8 @@ impl Default for ReplaySettings {
         Self {
             recordings: Vec::new(),
             selected: String::new(),
-            // Both start empty: a shortcut nobody chose would take a key away
-            // from every other program on the machine.
-            record_hotkey: String::new(),
-            replay_hotkey: String::new(),
+            record_hotkey: DEFAULT_RECORD_HOTKEY.to_string(),
+            replay_hotkey: DEFAULT_REPLAY_HOTKEY.to_string(),
             repeat: None,
         }
     }
@@ -362,6 +366,12 @@ pub fn capture_key(scan: u16, down: bool) {
         let Some(draft) = state.draft.as_mut() else {
             return;
         };
+        // A key with no scan code cannot be pressed again: it is a keystroke
+        // with nothing in it. Recording one makes a file that plays back
+        // silence, which reads as a broken replayer rather than a broken event.
+        if scan == 0 {
+            return;
+        }
         // The shortcut is not an action: this is what lets the same chord end
         // the recording and start the replay without either being replayed.
         if draft.ignore_keys.contains(&scan) {
@@ -565,9 +575,25 @@ pub fn replay_shortcut(app: &AppHandle, runtime: &RuntimeState) {
     };
     if !settings.replay_enabled {
         note("the replayer is switched off".to_string());
+        runtime.alert("the replay shortcut is set, but the replayer is switched off");
+        return;
+    }
+    // A replay with nothing chosen used to say so in a note inside the tab, which
+    // is not where somebody pressing a key is looking. It says so where a refused
+    // shortcut is printed instead.
+    if !settings
+        .replay
+        .recordings
+        .iter()
+        .any(|entry| entry.id == settings.replay.selected)
+    {
+        runtime.alert(
+            "a replay needs a recording: record one, then pick it on the Replayer tab",
+        );
         return;
     }
     if let Err(error) = start(runtime, &settings, None) {
+        runtime.alert(format!("the replay could not start: {error}"));
         note(error);
     }
 }
@@ -745,5 +771,23 @@ mod tests {
             Event::Key { t: 290, scan: 0x1e, down: false },
         ];
         assert_eq!(event_time(events.last().expect("events")), 290);
+    }
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+
+    #[test]
+    fn a_key_with_no_scan_code_is_not_recorded() {
+        with(|state| state.draft = Some(Draft::default()));
+        capture_key(0, true);
+        let empty = with(|state| state.draft.as_ref().map(|draft| draft.events.len()));
+        assert_eq!(empty, Some(0), "a key with no scan code was recorded");
+
+        capture_key(0x2d, true);
+        capture_key(0x2d, false);
+        let typed = with(|state| state.draft.take().map(|draft| draft.events.len()));
+        assert_eq!(typed, Some(2));
     }
 }

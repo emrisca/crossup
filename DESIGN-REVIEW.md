@@ -306,6 +306,53 @@ target when the countdown ends instead; pressing the global chord into the app
 now answers `unfocused` with the clock at 0 rather than typing nowhere for three
 seconds.
 
+## Round eight, shipped in 0.2.7
+
+The typer and replayer shortcuts now work on a normal launch, without anybody
+editing a setting by hand.
+
+**Every slot ships a combination.** The typer starts with `Control+Alt+T`; the
+replayer with `Control+Alt+R` to record and `Control+Alt+P` to replay. Both
+fields used to open on "not set", which is a feature nobody can use and a dead
+key that looks like a working one.
+
+**A legacy file heals on load.** The settings file this build was tested against
+held `Mouse5` as the typer's shortcut — a mouse button, which the engine refuses
+because it cannot type — and both replayer slots empty, because their save used
+to be rejected before it reached the handler. `Settings::heal_shortcuts` replaces
+both on load and says so in the window: loading that file produced
+`Control+Alt+T`, `Control+Alt+R`, `Control+Alt+P`, no shortcut errors, and the
+file on disk rewritten to match before the first frame was drawn. Two slots on
+one chord are split apart for the same reason. Five tests cover it.
+
+**A replay with nothing chosen says so where shortcuts do.** It used to leave a
+note inside the Replayer tab. Pressing the replays chord with no recording
+produced, in the strip above the tabs: "a replay needs a recording: record one,
+then pick it on the Replayer tab". The same strip carries refused shortcuts and
+these refusals, so there is one place to look when a key does nothing.
+
+### Measured on the packaged build
+
+| What was pressed | What happened |
+| --- | --- |
+| launch with `Mouse5` + empty replayer slots | healed to `Ctrl+Alt+T` / `Ctrl+Alt+R` / `Ctrl+Alt+P`, no errors, file rewritten |
+| `Ctrl+Alt+P` with nothing recorded | alert in the strip, nothing started |
+| `Ctrl+Alt+T` into a scratch window | 43 characters typed; clock 0 idle, 0.3 → 2.6 s while typing, frozen at 2.6 s four reads later |
+| `Ctrl+Alt+R`, type `xyz`, `Ctrl+Alt+R` | recording captured 6 key events, saved as a recording |
+| `Ctrl+Alt+P` into an emptied scratch window | `xyz` typed back; replay finished 6 of 6 |
+
+![The replayer alert in the shared strip](docs/ui-pass/packaged-replay-alert.png)
+
+Two things surfaced while proving it. A key event with **no scan code** was
+recorded and replayed as silence — a recording that does nothing for a reason
+nobody can see — so it is dropped now, with a test. And the recorder ignores
+injected input by design, which is what stops a replay recording itself; the
+capture half of the live test therefore ran on an evidence-only build with that
+guard opened, and the shipped build keeps it closed.
+
+Scores unchanged: this round is behaviour, not design. Typography 9.5, contrast
+9.5, overall 9.5.
+
 ## What I could not check
 
 - The contrast numbers are one preset. Ten presets share the same derivation, but

@@ -41,6 +41,10 @@ const MAX_CPS: f64 = 25.0;
 const MAX_TYPO: f64 = 0.25;
 /// The pace a fresh typer starts at: an unhurried person.
 const DEFAULT_WPM: f64 = 65.0;
+/// The shortcut a fresh typer comes up with. A slot reading "not set" is a
+/// feature nobody can use, and the typer only earns its place if it starts from
+/// a window that is not this one.
+pub const DEFAULT_HOTKEY: &str = "Control+Alt+T";
 
 const BACKSPACE: u16 = 0x0e;
 const TAB: u16 = 0x0f;
@@ -77,7 +81,7 @@ impl Default for TyperSettings {
             typo_rate: 0.04,
             deadline_secs: None,
             countdown_secs: 3,
-            hotkey: String::new(),
+            hotkey: DEFAULT_HOTKEY.to_string(),
         }
     }
 }

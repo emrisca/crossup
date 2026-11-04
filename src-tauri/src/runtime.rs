@@ -40,6 +40,11 @@ pub struct ActivityView {
     pub last_macro: Option<Report>,
     /// Shortcuts that could not be taken, with the reason.
     pub hotkey_errors: Vec<String>,
+    /// Something that was asked for and could not happen: a replay with no
+    /// recording chosen, a run refused because another one holds the desktop.
+    /// Printed in the same strip as a refused shortcut, because a key that does
+    /// nothing and says nothing is the failure both of them share.
+    pub alerts: Vec<String>,
 }
 
 #[derive(Default)]
@@ -53,6 +58,7 @@ struct RunState {
     last: Option<Outcome>,
     last_macro: Option<Report>,
     hotkey_errors: Vec<String>,
+    alerts: Vec<String>,
 }
 
 pub struct Runtime {
@@ -123,12 +129,27 @@ impl Runtime {
             last: state.last.clone(),
             last_macro: state.last_macro.clone(),
             hotkey_errors: state.hotkey_errors.clone(),
+            alerts: state.alerts.clone(),
+        }
+    }
+
+    /// Say that something could not happen where the window will show it.
+    pub fn alert(&self, message: impl Into<String>) {
+        let message = message.into();
+        let mut state = self.state.lock().unwrap();
+        if !state.alerts.iter().any(|existing| existing == &message) {
+            state.alerts.push(message);
+            if state.alerts.len() > 4 {
+                state.alerts.remove(0);
+            }
         }
     }
 
     /// Claim the desktop for one run, or explain who has it.
     pub(crate) fn claim(&self, label: &str) -> Result<Arc<AtomicBool>, String> {
         let mut state = self.state.lock().unwrap();
+        // Starting something makes whatever was refused before it stale.
+        state.alerts.clear();
         if let Some(running) = state.running.clone() {
             return Err(match running.as_str() {
                 CLICKER => "the auto clicker is already running".to_string(),

@@ -248,20 +248,29 @@ fn save(app: &AppHandle, shared: &Shared) {
 /// Section by section rather than the whole file at once: one field changing
 /// shape should cost that field, not every profile, macro and clicker setting
 /// the user has. What could not be read comes back as notes for the log.
-fn load(app: &AppHandle) -> (Settings, Vec<String>) {
+fn load(app: &AppHandle) -> (Settings, Vec<String>, bool) {
     let Some(path) = settings_path(app) else {
-        return (Settings::default(), Vec::new());
+        return (Settings::default(), Vec::new(), false);
     };
     let Ok(text) = std::fs::read_to_string(&path) else {
-        return (Settings::default(), Vec::new());
+        return (Settings::default(), Vec::new(), false);
     };
     match serde_json::from_str::<serde_json::Value>(&text) {
-        Ok(document) => Settings::from_document(&document),
+        Ok(document) => {
+            let (mut settings, mut notes) = Settings::from_document(&document);
+            // A slot that could never fire is replaced before the window opens,
+            // so nothing on screen shows a shortcut that does nothing.
+            let healed = settings.heal_shortcuts();
+            let changed = !healed.is_empty();
+            notes.extend(healed);
+            (settings, notes, changed)
+        }
         Err(error) => (
             Settings::default(),
             vec![format!(
                 "the saved settings could not be read ({error}); starting from the defaults"
             )],
+            false,
         ),
     }
 }
@@ -1079,9 +1088,15 @@ pub fn run() {
         // state the banner reads lives in `update`.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            let (settings, notes) = load(app.handle());
+            let (settings, notes, healed) = load(app.handle());
             let shared: SharedState = Arc::new(Mutex::new(Shared::new(settings.clone())));
             app.manage(shared.clone());
+            // A shortcut that had to be replaced is written back at once: the
+            // file on disk should say what the engine just took.
+            if healed {
+                let guard = shared.lock().unwrap();
+                save(app.handle(), &guard);
+            }
             {
                 // A section that could not be read is worth saying out loud, so
                 // "it forgot my settings" comes with the reason it did.
