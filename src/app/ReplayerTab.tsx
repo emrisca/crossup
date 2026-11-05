@@ -93,6 +93,7 @@ export function ReplayerTab({
     recordHotkey?: string;
     replayHotkey?: string;
     repeat?: number | null;
+    speed?: number;
   }) => {
     // Command arguments arrive as camelCase: `save_replay_options` takes
     // `recordHotkey`, and sending `record_hotkey` was refused as a missing key,
@@ -101,6 +102,7 @@ export function ReplayerTab({
       recordHotkey: patch.recordHotkey ?? options.recordHotkey,
       replayHotkey: patch.replayHotkey ?? options.replayHotkey,
       repeat: patch.repeat === undefined ? options.repeat : patch.repeat,
+      speed: patch.speed ?? options.speed,
     });
   };
 
@@ -223,6 +225,30 @@ export function ReplayerTab({
                   />
                   <span className="hb__field-label">times</span>
                 </>
+              )}
+            </Line>
+            <Line
+              label="Speed"
+              note="How fast the recording plays back. Below 1 is slower, above 1 is faster."
+            >
+              <input
+                className="hb__range"
+                type="range"
+                min={25}
+                max={400}
+                step={25}
+                value={Math.round(options.speed * 100)}
+                disabled={busy}
+                aria-label="Replay speed"
+                onChange={(event) =>
+                  saveOptions({ speed: Number(event.target.value) / 100 })
+                }
+              />
+              <span className="hb__readout">{options.speed.toFixed(2)}×</span>
+              {chosen && (
+                <span className="hb__field-label">
+                  {seconds(Math.round(chosen.durationMs / options.speed))}
+                </span>
               )}
             </Line>
           </div>
@@ -363,8 +389,9 @@ export function ReplayerTab({
             so starting it mid-run is refused rather than fighting over the cursor.
           </p>
           <p className="hb__card-note">
-            A replay presses what was recorded at the recorded pace, so a recording made
-            against one window clicks whatever is in that spot now.
+            A replay presses what was recorded, at the recorded pace or the speed set
+            above, so a recording made against one window clicks whatever is in that spot
+            now.
           </p>
         </Card>
 

@@ -28,6 +28,7 @@ export default defineConfig({
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
         overlay: fileURLToPath(new URL("./overlay.html", import.meta.url)),
+        badge: fileURLToPath(new URL("./badge.html", import.meta.url)),
       },
     },
   },

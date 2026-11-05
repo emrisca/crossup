@@ -21,11 +21,11 @@
 //!    never fight over the cursor.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::config::Settings;
 use crate::hook::SharedState;
@@ -53,6 +53,10 @@ const MOVE_GAP_PX: i32 = 3;
 /// The beat between passes of a looped replay, so the last action and the first
 /// one of the next pass are not the same instant.
 const BETWEEN_PASSES_MS: u64 = 250;
+/// How far from the recorded pace a replay may go: a quarter speed to four
+/// times. Past either end the gaps stop reading as a person doing something.
+const MIN_SPEED: f64 = 0.25;
+const MAX_SPEED: f64 = 4.0;
 
 // ── what a recording holds ─────────────────────────────────────────
 
@@ -120,6 +124,25 @@ pub struct ReplaySettings {
     pub replay_hotkey: String,
     /// How many passes a replay makes. `None` is forever.
     pub repeat: Option<u32>,
+    /// Playback speed as a multiple of the recorded pace: 1 is as recorded, 2 is
+    /// twice as fast, 0.5 is half.
+    pub speed: f64,
+}
+
+impl ReplaySettings {
+    /// The speed a run uses, kept inside what still replays usefully.
+    fn speed(&self) -> f64 {
+        clamp_speed(self.speed)
+    }
+}
+
+/// Keep a speed inside the range the engine accepts.
+pub fn clamp_speed(speed: f64) -> f64 {
+    if speed.is_finite() {
+        speed.clamp(MIN_SPEED, MAX_SPEED)
+    } else {
+        1.0
+    }
 }
 
 impl Default for ReplaySettings {
@@ -130,6 +153,7 @@ impl Default for ReplaySettings {
             record_hotkey: DEFAULT_RECORD_HOTKEY.to_string(),
             replay_hotkey: DEFAULT_REPLAY_HOTKEY.to_string(),
             repeat: None,
+            speed: 1.0,
         }
     }
 }
@@ -177,6 +201,8 @@ struct Progress {
     total: u32,
     pass: u32,
     passes: Option<u32>,
+    /// The pace this run is going at, for the badge to report.
+    speed: f64,
     note: Option<String>,
 }
 
@@ -188,6 +214,7 @@ impl Default for Progress {
             total: 0,
             pass: 0,
             passes: None,
+            speed: 1.0,
             note: None,
         }
     }
@@ -228,6 +255,8 @@ pub struct ReplayState {
     pub total: u32,
     pub pass: u32,
     pub passes: Option<u32>,
+    /// The pace the run is going at: 1 is as recorded.
+    pub speed: f64,
     /// Why something could not start, if it could not.
     pub note: Option<String>,
 }
@@ -250,6 +279,7 @@ pub fn view() -> ReplayState {
             total: state.progress.total,
             pass: state.progress.pass,
             passes: state.progress.passes,
+            speed: state.progress.speed,
             note: state.progress.note.clone(),
         }
     })
@@ -526,6 +556,7 @@ pub fn start(
 
     let stop = runtime.claim(REPLAY)?;
     let passes = settings.replay.repeat.map(|count| count.max(1));
+    let speed = settings.replay.speed();
     with(|state| {
         state.progress = Progress {
             status: "replaying".to_string(),
@@ -533,6 +564,7 @@ pub fn start(
             total: recording.events.len() as u32,
             pass: 0,
             passes,
+            speed,
             note: None,
         };
     });
@@ -542,7 +574,9 @@ pub fn start(
     std::thread::Builder::new()
         .name("crossup-replay".into())
         .spawn(move || {
-            let outcome = drive(&events, passes, &stop);
+            badge(true, speed);
+            let outcome = drive(&events, passes, speed, &stop);
+            badge(false, speed);
             let mut progress = with(|state| std::mem::take(&mut state.progress));
             progress.status = outcome.to_string();
             with(|state| state.progress = progress);
@@ -604,7 +638,12 @@ pub fn request(runtime: &RuntimeState, settings: &Settings) {
 }
 
 /// Play the events, one pass after another.
-fn drive(events: &[Event], passes: Option<u32>, stop: &AtomicBool) -> &'static str {
+fn drive(
+    events: &[Event],
+    passes: Option<u32>,
+    speed: f64,
+    stop: &AtomicBool,
+) -> &'static str {
     // A 1 ms timer, so a mouse path drawn from sixty samples a second lands
     // near where it was drawn rather than in fifteen-millisecond steps.
     let _timer = input::TimerResolution::raise();
@@ -625,7 +664,7 @@ fn drive(events: &[Event], passes: Option<u32>, stop: &AtomicBool) -> &'static s
 
         let began = Instant::now();
         for (index, event) in events.iter().enumerate() {
-            let due = began + Duration::from_millis(event_time(event) as u64);
+            let due = began + Duration::from_millis(scaled_ms(event_time(event), speed));
             if !wait_until(stop, due) {
                 return "stopped";
             }
@@ -637,7 +676,10 @@ fn drive(events: &[Event], passes: Option<u32>, stop: &AtomicBool) -> &'static s
         if passes.map(|limit| pass >= limit).unwrap_or(false) {
             return "done";
         }
-        if !wait_until(stop, Instant::now() + Duration::from_millis(BETWEEN_PASSES_MS)) {
+        if !wait_until(
+            stop,
+            Instant::now() + Duration::from_millis(scaled_ms(BETWEEN_PASSES_MS as u32, speed)),
+        ) {
             return "stopped";
         }
     }
@@ -653,6 +695,63 @@ fn apply(event: &Event) {
         }
         Event::Wheel { amount, .. } => input::scroll(*amount),
         Event::Key { scan, down, .. } => input::key(*scan, *down),
+    }
+}
+
+/// A recorded moment, moved to the pace this replay is going at.
+///
+/// At twice the speed every gap halves, so the run finishes in half the time; at
+/// half the speed they double. The rounding is a millisecond, which is under the
+/// timer the run asks Windows for.
+fn scaled_ms(t: u32, speed: f64) -> u64 {
+    (t as f64 / clamp_speed(speed)).round() as u64
+}
+
+// ── the badge ─────────────────────────────────────────────────────
+
+/// The badge window's label, so the main window can tell it apart.
+pub const BADGE: &str = "replay-badge";
+
+static BADGE_APP: OnceLock<AppHandle> = OnceLock::new();
+
+/// Build the small "replaying" window, hidden, at startup.
+///
+/// It is built here rather than when a replay starts because creating a webview
+/// from the replay thread hangs the app — the same trap the region picker
+/// documents. After this, a run only shows and hides it.
+pub fn install_badge(app: &AppHandle) -> Result<(), String> {
+    let _ = BADGE_APP.set(app.clone());
+    if app.get_webview_window(BADGE).is_none() {
+        let window = WebviewWindowBuilder::new(app, BADGE, WebviewUrl::App("badge.html".into()))
+            .title("Replaying")
+            .inner_size(150.0, 32.0)
+            .position(18.0, 18.0)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .resizable(false)
+            .shadow(false)
+            .visible(false)
+            .build()
+            .map_err(|error| format!("could not build the replay badge: {error}"))?;
+        // Clicks belong to the window underneath: the badge reports on the run,
+        // it never stands between the run and its target.
+        let _ = window.set_ignore_cursor_events(true);
+    }
+    Ok(())
+}
+
+/// Show or hide the badge. Called from the replay thread, which is why it takes
+/// the window by label instead of holding one.
+fn badge(playing: bool, _speed: f64) {
+    let Some(app) = BADGE_APP.get() else { return };
+    let Some(window) = app.get_webview_window(BADGE) else { return };
+    if playing {
+        let _ = window.show();
+    } else {
+        let _ = window.hide();
     }
 }
 

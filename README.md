@@ -236,6 +236,10 @@ ever be offered.
   and recordings live in settings.json beside the other settings.
 - **Once or forever.** A replay runs a set number of passes or until the replay
   shortcut stops it, and claims the same one-run slot as every other tool.
+- **Speed.** A replay can run from a quarter speed to four times the recorded
+  one, and the tab shows the length that works out to. While it plays, a small
+  click-through badge sits at the top left of the screen, so a window the run has
+  covered still says the desktop is being driven and at what pace.
 
 ### Typer
 

@@ -343,6 +343,8 @@ export type ReplaySettingsView = {
   replayHotkey: string;
   /** How many passes a replay makes. Null is forever. */
   repeat: number | null;
+  /** Playback speed as a multiple of the recorded pace. */
+  speed: number;
 };
 
 /** What a recording or a replay is doing right now. */
@@ -778,6 +780,7 @@ let mock: View = {
     recordHotkey: "",
     replayHotkey: "",
     repeat: null,
+    speed: 1,
   },
   autostart: {
     enabled: false,
@@ -1185,6 +1188,7 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
           recordHotkey: String(args?.recordHotkey ?? ""),
           replayHotkey: String(args?.replayHotkey ?? ""),
           repeat: (args?.repeat ?? null) as number | null,
+          speed: Number(args?.speed ?? 1),
         },
       };
       break;

@@ -121,6 +121,8 @@ struct ReplayView {
     replay_hotkey: String,
     /// `None` is forever.
     repeat: Option<u32>,
+    /// Playback speed as a multiple of the recorded pace.
+    speed: f64,
 }
 
 #[derive(Serialize)]
@@ -184,6 +186,7 @@ fn view_of(shared: &Shared) -> View {
             record_hotkey: shared.settings.replay.record_hotkey.clone(),
             replay_hotkey: shared.settings.replay.replay_hotkey.clone(),
             repeat: shared.settings.replay.repeat,
+            speed: shared.settings.replay.speed,
         },
         replay_enabled: shared.settings.replay_enabled,
         profiles: shared
@@ -581,12 +584,14 @@ fn save_replay_options(
     record_hotkey: String,
     replay_hotkey: String,
     repeat: Option<u32>,
+    speed: f64,
 ) -> View {
     {
         let mut shared = state.lock().unwrap();
         shared.settings.replay.record_hotkey = record_hotkey.trim().to_string();
         shared.settings.replay.replay_hotkey = replay_hotkey.trim().to_string();
         shared.settings.replay.repeat = repeat;
+        shared.settings.replay.speed = replay::clamp_speed(speed);
         save(&app, &shared);
     }
     let settings = state.lock().unwrap().settings.clone();
@@ -1120,6 +1125,9 @@ pub fn run() {
             // still the runtime's run, but only the typer has a pause.
             app.manage(typer::Holder::new());
             hook::install(shared.clone());
+            // Built hidden now, because a webview created from the replay thread
+            // would hang the app. A replay only shows and hides it.
+            let _ = replay::install_badge(app.handle());
             // The clicker's start shortcut and every enabled macro's shortcut.
             runtime::register_shortcuts(&runtime, app.handle(), &settings);
 
