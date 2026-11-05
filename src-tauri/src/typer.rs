@@ -64,6 +64,10 @@ pub const DEFAULT_HOTKEY: &str = "Control+Alt+T";
 const BACKSPACE: u16 = 0x0e;
 const TAB: u16 = 0x0f;
 const ENTER: u16 = 0x1c;
+const CONTROL: u16 = 0x1d;
+const LEFT: u16 = 0x4b;
+const END: u16 = 0x4f;
+const DELETE: u16 = 0x53;
 
 // ── settings ───────────────────────────────────────────────────────
 
@@ -241,17 +245,16 @@ pub fn plan(text: &str, settings: &TyperSettings) -> TyperPlan {
     // it is noticed, the backspaces and the breath before the retype — about
     // four and a half key gaps, measured against the driver's own waits.
     //
-    // A mistake left for later costs what it always costs a person: everything
-    // written since has to come off and go back on. Two sentences is the middle
-    // of the one-to-three window the run waits, and a backspace runs at a little
-    // under half a key gap.
-    let retyped = if settings.typo_defer {
+    // A mistake left for later costs a rewind over the line rather than a
+    // retype. Two sentences is the middle of the one-to-three window, and a
+    // rewind presses a key far faster than it types one.
+    let walked = if settings.typo_defer {
         (2.0 * chars as f64 / sentences.max(1) as f64).min(chars as f64)
     } else {
         0.0
     };
     let corrections_ms = if settings.typo_defer {
-        corrections * (retyped * char_ms * 1.45 + 560.0)
+        corrections * (walked * char_ms * 0.13 + 780.0)
     } else {
         corrections * (char_ms * 4.5 + 235.0)
     };
@@ -598,14 +601,20 @@ fn drive(
             return "unfocused";
         }
         // A mistake left for later is typed and walked away from. Once the
-        // sentences it waits for have ended, the run goes back: everything
-        // written since comes off, the wrong letter with it, and the stretch is
-        // typed again.
-        if let Some((at, 0)) = deferred {
-            if !go_back(characters, at, index, char_ms, drift, &mut roll, stop) {
-                return "stopped";
+        // sentences it waits for have ended, the run rewinds to it without
+        // erasing anything, swaps the wrong letter for the right one and jumps
+        // home to carry on.
+        //
+        // A line break is a natural place to tidy up, and settling up here is
+        // also what keeps the rewind inside one line: no newline ever sits
+        // between the mistake and the caret.
+        if let Some((at, left)) = deferred {
+            if left == 0 || *character == '\n' {
+                if !fix_word(characters, at, index, char_ms, &mut roll, stop) {
+                    return "stopped";
+                }
+                deferred = None;
             }
-            deferred = None;
         }
         // A mistype fixed where it is made is a wrong letter or a short run of
         // them, typed at the pace the rest of the word is going at, then noticed
@@ -695,7 +704,7 @@ fn drive(
     // The draft ran out before the sentences that would have taken the run back
     // to its last mistake, so it goes back now rather than leaving the text wrong.
     if let Some((at, _)) = deferred {
-        if !go_back(characters, at, characters.len(), char_ms, drift, &mut roll, stop) {
+        if !fix_word(characters, at, characters.len(), char_ms, &mut roll, stop) {
             return "stopped";
         }
     }
@@ -770,41 +779,46 @@ fn long_sentence_gap(roll: &mut Roll) -> u32 {
     LONG_SENTENCE_MIN_WORDS + ((roll.next() * span as f64) as u32).min(span - 1)
 }
 
-/// Erase back to a mistake and type that stretch again.
+/// Go back over the line to a mistake, swap the letter, and jump home.
 ///
-/// This is what a person does when the error is a sentence behind them: the
-/// backspaces run through everything written since, a beat passes while it is
-/// read again, and then the right text goes out at the pace the run has been
-/// keeping. Returns false when the run was stopped.
-fn go_back(
+/// The text after the mistake is not touched: the caret rewinds one character at
+/// a time, deletes the wrong letter, types the right one and returns to the end,
+/// where the run carries on. Word jumps would be quicker, but how many presses
+/// reach a given word is a guess about the window's own idea of a word, and a
+/// run that guessed wrong landed somewhere else entirely. A character is a
+/// character in every editor, and the rewind is short because the run settles up
+/// before it starts a new line. Returns false when the run was stopped.
+fn fix_word(
     characters: &[char],
     at: usize,
     typed: usize,
     char_ms: f64,
-    drift: f64,
     roll: &mut Roll,
     stop: &AtomicBool,
 ) -> bool {
-    for _ in at..typed {
-        tap(BACKSPACE);
-        if !wait(stop, char_ms * (0.45 + roll.next() * 0.3)) {
+    for _ in 0..(typed - at) {
+        tap(LEFT);
+        if !wait(stop, 14.0 + roll.next() * 12.0) {
             return false;
         }
     }
-    if !wait(stop, 320.0 + roll.next() * 280.0) {
+    // The beat where the letter is read again.
+    if !wait(stop, 220.0 + roll.next() * 200.0) {
         return false;
     }
-    for character in &characters[at..typed] {
-        match character {
-            '\n' => tap(ENTER),
-            '\t' => tap(TAB),
-            other => input::text(&other.to_string()),
-        }
-        if !wait(stop, char_ms * (0.9 + roll.next() * 0.3) * drift) {
-            return false;
-        }
+    // Delete, not Backspace: the caret stops in front of the wrong letter, so
+    // there is no off-by-one to get wrong.
+    tap(DELETE);
+    if !wait(stop, char_ms * (0.6 + roll.next() * 0.4)) {
+        return false;
     }
-    true
+    input::text(&characters[at].to_string());
+    if !wait(stop, char_ms * (0.6 + roll.next() * 0.4)) {
+        return false;
+    }
+    // Home again, to where the run left off.
+    input::chord(CONTROL, END);
+    wait(stop, 180.0 + roll.next() * 120.0)
 }
 
 /// How many characters a mistype takes with it: usually one, sometimes two or
@@ -981,7 +995,7 @@ mod tests {
     }
 
     #[test]
-    fn a_mistake_left_for_later_costs_the_stretch_it_walks_back_over() {
+    fn a_mistake_left_for_later_costs_the_trip_back_to_it() {
         let text = "One sentence that runs on for a while here. Another follows it for good measure.";
         let immediate = plan(
             text,

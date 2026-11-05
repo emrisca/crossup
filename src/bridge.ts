@@ -955,14 +955,13 @@ function mockPlan(text: string, settings: TyperSettings): TyperPlan {
   const charMs = 1_000 / cps;
   const corrections = Math.round(chars * Math.min(0.25, Math.max(0, settings.typoRate)));
   const thinkingMs = Math.round(thinking * 1_000);
-  // A mistake left for later comes off and goes back on, so it costs the text
-  // between it and the sentence that noticed it, two sentences' worth on the
-  // average of the one-to-three window.
-  const retyped = settings.typoDefer
+  // A mistake left for later costs a rewind over the line, then the letter and
+  // the jump home. Two sentences is the middle of the one-to-three window.
+  const walked = settings.typoDefer
     ? Math.min(chars, (2 * chars) / Math.max(1, sentences))
     : 0;
   const correctionsMs = settings.typoDefer
-    ? corrections * (retyped * charMs * 1.45 + 560)
+    ? corrections * (walked * charMs * 0.13 + 780)
     : corrections * (charMs * 4.5 + 235);
   return {
     chars,

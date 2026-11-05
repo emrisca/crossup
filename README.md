@@ -253,9 +253,11 @@ ever be offered.
   then a pause while it is noticed, a backspace for each, a breath, and the
   right letters again.
 - **Fix it later.** Off, a mistake is corrected where it is made. On, it stands
-  while the run types on, and one to three sentences later the run goes back
-  over what it wrote, erases to the mistake and types that stretch again. The
-  run is longer for it, and the plan above says how much.
+  while the run types on, and one to three sentences later the run rewinds over
+  the line to that word, deletes the wrong letter, types the right one and jumps
+  home with Ctrl+End. It settles up before starting a new line, so the rewind
+  never crosses a paragraph break. Only the letter changes; nothing typed since
+  is erased. The run is a little longer for it, and the plan above says how much.
 - **Thinking pauses.** Stops between words, each up to the longest set. They
   land after a sentence's full stop, and inside a sentence that runs on, after a
   random fifteen to thirty words counted from the last pause. The estimate

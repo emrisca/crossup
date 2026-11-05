@@ -166,6 +166,16 @@ pub fn key(scan: u16, down: bool) {
     send(&[key_input(scan, !down, false)]);
 }
 
+/// Press a key with a modifier held, the shape an editor reads as "move by a
+/// word" or "go to the end". The modifier goes down first and up last, so the
+/// window never sees the bare key and never mistakes it for a shortcut.
+pub fn chord(modifier: u16, scan: u16) {
+    key(modifier, true);
+    key(scan, true);
+    key(scan, false);
+    key(modifier, false);
+}
+
 /// Type text as Unicode, which is layout-independent: sending `é` as packets
 /// means the machine does not have to be in a French layout to receive it.
 pub fn text(text: &str) {

@@ -345,8 +345,8 @@ export function MacrosTab({
         </div>
         <div className="hb__rail-foot">
           <p className="hb__card-note hb__dim" style={{ margin: 0, padding: "0 4px" }}>
-            A macro runs from its shortcut, or from the Run button. Only one run goes
-            at a time, clicker or macro.
+            A macro runs from its shortcut or the Run button. One run at a time, clicker
+            or macro.
           </p>
         </div>
       </aside>
@@ -398,7 +398,7 @@ export function MacrosTab({
               <div className="hb__rows">
                 <Line
                   label="Shortcut"
-                  note="Works globally, whether or not this window is in front."
+                  note="Runs anywhere, whether or not this window is in front."
                 >
                   <HotkeyField
                     label="Macro shortcut"
