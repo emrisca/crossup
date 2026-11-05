@@ -18,7 +18,9 @@
 //!    recorded. The shortcut brings it back.
 //! 3. **A replay is one more thing that drives the desktop.** It claims the same
 //!    run slot as the clicker, the typer and the macros, so two of them can
-//!    never fight over the cursor.
+//!    never fight over the cursor. When a macro asks for one, the macro already
+//!    holds that slot and the replay plays inside it — the driver below never
+//!    claims, so a nested replay is not refused by its own caller.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -574,11 +576,12 @@ pub fn start(
     std::thread::Builder::new()
         .name("crossup-replay".into())
         .spawn(move || {
-            badge(true, speed);
-            let outcome = drive(&events, passes, speed, &stop);
-            badge(false, speed);
+            let outcome = play_inside(&events, passes, speed, &stop);
             let mut progress = with(|state| std::mem::take(&mut state.progress));
-            progress.status = outcome.to_string();
+            progress.status = match outcome {
+                Ok(()) => "done".to_string(),
+                Err(why) => why,
+            };
             with(|state| state.progress = progress);
             shared.release(0, 0.0);
         })
@@ -637,13 +640,38 @@ pub fn request(runtime: &RuntimeState, settings: &Settings) {
     }
 }
 
-/// Play the events, one pass after another.
-fn drive(
+/// Play a recording from inside a run that already holds the desktop — a macro.
+///
+/// The badge is shown for the same reason it is shown when the Replayer tab
+/// starts one: the screen is being driven and nothing else on the desktop says
+/// so. Nothing is claimed and nothing is released, because the caller owns the
+/// slot and will release it when it finishes.
+pub fn play_inside(
     events: &[Event],
     passes: Option<u32>,
     speed: f64,
     stop: &AtomicBool,
-) -> &'static str {
+) -> Result<(), String> {
+    if events.is_empty() {
+        return Err("that recording has nothing in it".to_string());
+    }
+    badge(true, speed);
+    let outcome = drive(events, passes, speed, stop);
+    badge(false, speed);
+    outcome
+}
+
+/// Play the events, one pass after another.
+///
+/// Deliberately does not claim the run slot: the caller either owns it already
+/// or is running inside something that does. Claiming here would make every
+/// nested replay fail against its own caller.
+pub fn drive(
+    events: &[Event],
+    passes: Option<u32>,
+    speed: f64,
+    stop: &AtomicBool,
+) -> Result<(), String> {
     // A 1 ms timer, so a mouse path drawn from sixty samples a second lands
     // near where it was drawn rather than in fifteen-millisecond steps.
     let _timer = input::TimerResolution::raise();
@@ -652,11 +680,11 @@ fn drive(
 
     loop {
         if stop.load(Ordering::Relaxed) {
-            return "stopped";
+            return Err("Stopped".to_string());
         }
         if let Some(limit) = passes {
             if pass >= limit {
-                return "done";
+                return Ok(());
             }
         }
         pass += 1;
@@ -666,7 +694,7 @@ fn drive(
         for (index, event) in events.iter().enumerate() {
             let due = began + Duration::from_millis(scaled_ms(event_time(event), speed));
             if !wait_until(stop, due) {
-                return "stopped";
+                return Err("Stopped".to_string());
             }
             apply(event);
             let played = (pass - 1) * per_pass + index as u32 + 1;
@@ -674,13 +702,13 @@ fn drive(
         }
 
         if passes.map(|limit| pass >= limit).unwrap_or(false) {
-            return "done";
+            return Ok(());
         }
         if !wait_until(
             stop,
             Instant::now() + Duration::from_millis(scaled_ms(BETWEEN_PASSES_MS as u32, speed)),
         ) {
-            return "stopped";
+            return Err("Stopped".to_string());
         }
     }
 }
@@ -897,6 +925,63 @@ mod capture_tests {
         capture_key(0x2d, false);
         let typed = with(|state| state.draft.take().map(|draft| draft.events.len()));
         assert_eq!(typed, Some(2));
+    }
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+    use crate::runtime::{Runtime, RuntimeState};
+
+    fn runtime() -> RuntimeState {
+        std::sync::Arc::new(Runtime::new())
+    }
+
+    fn one_event() -> Event {
+        Event::Move {
+            t: 0,
+            x: 10,
+            y: 20,
+        }
+    }
+
+    /// The whole point of 1.5: a replay asked for by a macro plays inside the
+    /// macro's claim instead of asking for a second one, which the runtime would
+    /// refuse. No electron passes here on purpose — the question is the claim.
+    #[test]
+    fn playing_from_inside_a_run_leaves_the_claim_alone() {
+        let runtime = runtime();
+        let stop = runtime.claim("macro A").expect("the slot should be free");
+
+        let outcome = play_inside(&[one_event()], Some(0), 1.0, &stop);
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(
+            runtime.running(),
+            Some("macro A".to_string()),
+            "the replay took or released the slot"
+        );
+    }
+
+    #[test]
+    fn a_recording_with_nothing_in_it_says_so() {
+        let stop = AtomicBool::new(false);
+        let outcome = play_inside(&[], Some(1), 1.0, &stop);
+        assert_eq!(outcome.unwrap_err(), "that recording has nothing in it");
+    }
+
+    /// A stop reaches a playback that is nested inside a macro just as it
+    /// reaches one started from the tab.
+    #[test]
+    fn a_stop_reaches_a_playback_inside_a_macro() {
+        let stop = AtomicBool::new(true);
+        let outcome = play_inside(&[one_event()], None, 1.0, &stop);
+        assert_eq!(outcome.unwrap_err(), "Stopped");
+    }
+
+    #[test]
+    fn a_playback_with_no_passes_to_make_finishes_at_once() {
+        let stop = AtomicBool::new(false);
+        assert!(play_inside(&[one_event()], Some(0), 1.0, &stop).is_ok());
     }
 }
 

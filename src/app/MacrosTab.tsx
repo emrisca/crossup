@@ -12,6 +12,8 @@ import {
   keyLabel,
   on,
   pickRegion,
+  picturePreview,
+  savePicture,
   PICK_CANCELLED,
   REGION_PICKED,
   stepSummary,
@@ -21,6 +23,12 @@ import {
   type PickResult,
   type Step,
   type View,
+  MACRO_PROGRAM,
+  TOOL_LABELS,
+  ToolName,
+  blockChoices,
+  chooseProgram,
+  runningWindows,
 } from "@/bridge";
 import { Card, Line } from "./AutoClickerTab";
 import { Switch } from "./Dialogs";
@@ -32,78 +40,137 @@ import { pushUndo } from "./undo";
 /** Deepest a Repeat may be nested, matching the engine's own limit. */
 const MAX_DEPTH = 6;
 
-const BLOCK_ORDER: Step["kind"][] = [
-  "key",
-  "text",
-  "click",
-  "move",
-  "scroll",
-  "delay",
-  "repeat",
+/**
+ * The palette, grouped.
+ *
+ * Eleven blocks in one wrapping row were readable; twenty-one are not, and the
+ * one thing a person needs from a palette is to find the block they already
+ * have in mind. The groups follow the question being asked: what goes in, how
+ * long it waits, what it looks at, and what it decides.
+ */
+const BLOCK_GROUPS: { title: string; kinds: Step["kind"][] }[] = [
+  { title: "Input", kinds: ["key", "text", "chord", "click", "move", "scroll", "scrollAt"] },
+  { title: "Time", kinds: ["delay", "randomDelay", "until"] },
+  { title: "Screen", kinds: ["waitImage", "clickImage", "assertImage"] },
+  {
+    title: "Tools",
+    kinds: ["focus", "launch", "clipboard", "screenshot", "tool"],
+  },
+  {
+    title: "Flow",
+    kinds: [
+      "if",
+      "repeat",
+      "repeatFor",
+      "callMacro",
+      "replay",
+      "while",
+      "note",
+      "log",
+      "stop",
+      "fail",
+    ],
+  },
 ];
 
 // ── tree surgery, so a drop is one immutable rewrite ───────────────
 
-const samePath = (a: number[], b: number[]) =>
+/**
+ * A position in the block tree.
+ *
+ * Step indexes, plus which arm of an If to step into: `[2, "else", 0]` is the
+ * first block under the third block's Otherwise. A Repeat has one list of
+ * children, so its paths carry indexes straight through.
+ */
+type Path = (number | "then" | "else")[];
+
+const samePath = (a: Path, b: Path) =>
   a.length === b.length && a.every((value, index) => value === b[index]);
 
-const isAncestor = (path: number[], other: number[]) =>
+const isAncestor = (path: Path, other: Path) =>
   path.length < other.length && path.every((value, index) => value === other[index]);
 
-const keyAt = (path: number[]) => path.join(".");
+const keyAt = (path: Path) => path.join(".");
 
-function pickStep(steps: Step[], path: number[]): Step | undefined {
+/** Rewrite the list of blocks the path at `parent` points into. */
+function withChildren(
+  steps: Step[],
+  parent: Path,
+  change: (list: Step[]) => Step[],
+): Step[] {
+  if (parent.length === 0) return change(steps);
+  const [head, ...rest] = parent;
+  if (typeof head !== "number") return steps;
+  return steps.map((entry, at) => {
+    if (at !== head) return entry;
+    const [arm, ...tail] = rest;
+    if (entry.kind === "repeat" || entry.kind === "while") {
+      return { ...entry, steps: withChildren(entry.steps, rest, change) };
+    }
+    if (entry.kind === "if") {
+      if (arm === "then") {
+        return { ...entry, steps: withChildren(entry.steps, tail, change) };
+      }
+      if (arm === "else") {
+        return { ...entry, otherwise: withChildren(entry.otherwise, tail, change) };
+      }
+    }
+    return entry;
+  });
+}
+
+function pickStep(steps: Step[], path: Path): Step | undefined {
+  if (path.length === 0) return undefined;
   const [head, ...rest] = path;
+  if (typeof head !== "number") return undefined;
   const step = steps[head];
   if (!step) return undefined;
   if (rest.length === 0) return step;
-  if (step.kind !== "repeat") return undefined;
-  return pickStep(step.steps, rest);
+  if (step.kind === "repeat" || step.kind === "while") return pickStep(step.steps, rest);
+  if (step.kind === "if") {
+    const [arm, ...tail] = rest;
+    if (arm === "then") return pickStep(step.steps, tail);
+    if (arm === "else") return pickStep(step.otherwise, tail);
+  }
+  return undefined;
 }
 
 /**
  * Put a block into the container at `parent`, at `index` within it.
  *
  * `parent` names a container, not a block, so the empty path is the list at the
- * top of the macro and anything longer walks into each Repeat on the way down.
+ * top of the macro, and anything longer walks into each Repeat — or each arm of
+ * an If — on the way down.
  */
-function insertStep(steps: Step[], parent: number[], index: number, step: Step): Step[] {
-  if (parent.length === 0) {
-    const copy = [...steps];
+function insertStep(steps: Step[], parent: Path, index: number, step: Step): Step[] {
+  return withChildren(steps, parent, (list) => {
+    const copy = [...list];
     copy.splice(Math.max(0, Math.min(index, copy.length)), 0, step);
     return copy;
-  }
-  const [head, ...rest] = parent;
-  return steps.map((entry, at) => {
-    if (at !== head || entry.kind !== "repeat") return entry;
-    return { ...entry, steps: insertStep(entry.steps, rest, index, step) };
   });
 }
 
-function removeStep(steps: Step[], path: number[]): Step[] {
-  const [head, ...rest] = path;
-  if (rest.length === 0) return steps.filter((_, at) => at !== head);
-  return steps.map((entry, at) => {
-    if (at !== head || entry.kind !== "repeat") return entry;
-    return { ...entry, steps: removeStep(entry.steps, rest) };
-  });
+function removeStep(steps: Step[], path: Path): Step[] {
+  const index = path[path.length - 1];
+  if (typeof index !== "number") return steps;
+  return withChildren(steps, path.slice(0, -1), (list) =>
+    list.filter((_, at) => at !== index),
+  );
 }
 
-function replaceStep(steps: Step[], path: number[], step: Step): Step[] {
-  const [head, ...rest] = path;
-  return steps.map((entry, at) => {
-    if (at !== head) return entry;
-    if (rest.length === 0) return step;
-    if (entry.kind !== "repeat") return entry;
-    return { ...entry, steps: replaceStep(entry.steps, rest, step) };
-  });
+function replaceStep(steps: Step[], path: Path, step: Step): Step[] {
+  const index = path[path.length - 1];
+  if (typeof index !== "number") return steps;
+  return withChildren(steps, path.slice(0, -1), (list) =>
+    list.map((entry, at) => (at === index ? step : entry)),
+  );
 }
 
 /** Move a block, keeping it where the drop said and out of its own children. */
 function moveStep(
   steps: Step[],
-  from: number[],
-  parent: number[],
+  from: Path,
+  parent: Path,
   index: number,
 ): Step[] {
   const step = pickStep(steps, from);
@@ -111,34 +178,74 @@ function moveStep(
   if (isAncestor(from, parent) || samePath(from, parent)) return steps;
 
   const without = removeStep(steps, from);
+  const from_index = from[from.length - 1];
   const sameContainer = samePath(from.slice(0, -1), parent);
-  const target = sameContainer && from[from.length - 1] < index ? index - 1 : index;
+  const target =
+    sameContainer && typeof from_index === "number" && from_index < index
+      ? index - 1
+      : index;
   return insertStep(without, parent, target, step);
 }
 
-const swap = (steps: Step[], path: number[], by: number): Step[] => {
-  const [head, ...rest] = path;
-  const entry = steps[head];
-  if (!entry) return steps;
-  if (rest.length === 0) {
-    const to = head + by;
-    if (to < 0 || to >= steps.length) return steps;
-    const copy = [...steps];
-    [copy[head], copy[to]] = [copy[to], copy[head]];
+const swap = (steps: Step[], path: Path, by: number): Step[] => {
+  const index = path[path.length - 1];
+  if (typeof index !== "number") return steps;
+  return withChildren(steps, path.slice(0, -1), (list) => {
+    const to = index + by;
+    if (to < 0 || to >= list.length) return list;
+    const copy = [...list];
+    [copy[index], copy[to]] = [copy[to], copy[index]];
     return copy;
-  }
-  if (entry.kind !== "repeat") return steps;
-  return steps.map((item, at) =>
-    at === head ? { ...entry, steps: swap(entry.steps, rest, by) } : item,
-  );
+  });
 };
 
 /** Every block in a container, in order, for the outline summary. */
 const countBlocks = (steps: Step[]): number =>
   steps.reduce(
-    (total, step) => total + 1 + (step.kind === "repeat" ? countBlocks(step.steps) : 0),
+    (total, step) =>
+      total +
+      1 +
+      (step.kind === "repeat" || step.kind === "while"
+        ? countBlocks(step.steps)
+        : step.kind === "if"
+          ? countBlocks(step.steps) + countBlocks(step.otherwise)
+          : 0),
     0,
   );
+
+/** The child lists a block shows: a Repeat's or While's one, or an If's two arms. */
+function branchAreas(step: Step, path: Path) {
+  if (step.kind === "repeat" || step.kind === "while") {
+    return [
+      {
+        key: step.kind,
+        parent: path,
+        steps: step.steps,
+        label: null as string | null,
+        emptyLabel: "Drag blocks in here",
+      },
+    ];
+  }
+  if (step.kind === "if") {
+    return [
+      {
+        key: "then",
+        parent: [...path, "then"] as Path,
+        steps: step.steps,
+        label: "Then",
+        emptyLabel: "Drop blocks to do when it is true",
+      },
+      {
+        key: "else",
+        parent: [...path, "else"] as Path,
+        steps: step.otherwise,
+        label: "Otherwise",
+        emptyLabel: "Drop blocks to do when it is not",
+      },
+    ];
+  }
+  return [];
+}
 
 // ── the tab ────────────────────────────────────────────────────────
 
@@ -179,8 +286,8 @@ export function MacrosTab({
   const [newOpen, setNewOpen] = useState(false);
   // Which block is waiting for a spot on the desktop, as a path into the tree,
   // so the answer lands on the block that asked rather than on the first one.
-  const [picking, setPicking] = useState<number[] | null>(null);
-  const pickPath = useRef<number[] | null>(null);
+  const [picking, setPicking] = useState<Path | null>(null);
+  const pickPath = useRef<Path | null>(null);
   const draftRef = useRef<Macro | null>(null);
   const sent = useRef<string>("");
   const timer = useRef<number | null>(null);
@@ -236,11 +343,38 @@ export function MacrosTab({
   }, [draft]);
 
   /** Ask the desktop for a rectangle; the block it belongs to is remembered. */
-  const pickSpot = useCallback((path: number[]) => {
+  const pickSpot = useCallback((path: Path) => {
     const step = pickStep(draftRef.current?.steps ?? [], path);
-    if (!step || (step.kind !== "move" && step.kind !== "click")) return;
+    if (!step) return;
     pickPath.current = path;
     setPicking(path);
+    if (
+      step.kind === "waitImage" ||
+      step.kind === "clickImage" ||
+      (step.kind === "if" && step.condition.kind === "picture") ||
+      (step.kind === "while" && step.condition.kind === "picture")
+    ) {
+      // A picture is dragged out of the screen the same way a zone is, and kept
+      // on disk rather than in the settings file.
+      void pickRegion({ purpose: "macro-picture", index: 0, zones: [], points: [] });
+      return;
+    }
+    if (step.kind === "screenshot") {
+      // An area rather than a point: the rectangle dragged is the shot, and
+      // the block already has one to draw under the cursor as a guide.
+      void pickRegion({
+        purpose: "macro-shot",
+        index: 0,
+        zones: [{ x: step.x, y: step.y, width: step.width, height: step.height }],
+        points: [],
+      });
+      return;
+    }
+    if (step.kind !== "move" && step.kind !== "click") {
+      pickPath.current = null;
+      setPicking(null);
+      return;
+    }
     void pickRegion({
       purpose: "macro-point",
       index: 0,
@@ -259,6 +393,60 @@ export function MacrosTab({
       else stop();
     };
     void on<PickResult>(REGION_PICKED, (result) => {
+      if (result.purpose === "macro-picture") {
+        const path = pickPath.current;
+        const macro = draftRef.current;
+        pickPath.current = null;
+        setPicking(null);
+        if (!path || !macro) return;
+        void savePicture(result)
+          .then((picture) => {
+            const current = draftRef.current;
+            const step = current ? pickStep(current.steps, path) : undefined;
+            if (!current || !step) return;
+            if (step.kind === "waitImage" || step.kind === "clickImage") {
+              push({
+                ...current,
+                steps: replaceStep(current.steps, path, { ...step, image: picture.id }),
+              });
+              return;
+            }
+            if (
+              (step.kind === "if" || step.kind === "while") &&
+              step.condition.kind === "picture"
+            ) {
+              push({
+                ...current,
+                steps: replaceStep(current.steps, path, {
+                  ...step,
+                  condition: { ...step.condition, image: picture.id },
+                }),
+              });
+            }
+          })
+          .catch(() => undefined);
+        return;
+      }
+      if (result.purpose === "macro-shot") {
+        const path = pickPath.current;
+        const macro = draftRef.current;
+        pickPath.current = null;
+        setPicking(null);
+        if (!path || !macro) return;
+        const step = pickStep(macro.steps, path);
+        if (!step || step.kind !== "screenshot") return;
+        push({
+          ...macro,
+          steps: replaceStep(macro.steps, path, {
+            ...step,
+            x: result.x,
+            y: result.y,
+            width: Math.max(1, result.width),
+            height: Math.max(1, result.height),
+          }),
+        });
+        return;
+      }
       const path = pickPath.current;
       const macro = draftRef.current;
       pickPath.current = null;
@@ -527,9 +715,9 @@ function NewMacroDialog({
 
 type Drag =
   | { source: "palette"; make: () => Step }
-  | { source: "tree"; path: number[] };
+  | { source: "tree"; path: Path };
 
-type Drop = { parent: number[]; index: number };
+type Drop = { parent: Path; index: number };
 
 function BlockBuilder({
   keys,
@@ -540,12 +728,17 @@ function BlockBuilder({
 }: {
   keys: View["keys"];
   steps: Step[];
-  picking: number[] | null;
-  onPick: (path: number[]) => void;
+  picking: Path | null;
+  onPick: (path: Path) => void;
   onChange: (steps: Step[]) => void;
 }) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [drop, setDrop] = useState<Drop | null>(null);
+  // One group of blocks at a time. Twenty-nine buttons in five stacked rows was
+  // the whole of the space a macro had to be written in; a tab row costs one
+  // line above it instead.
+  const [paletteGroup, setPaletteGroup] = useState(0);
+  const shownGroup = BLOCK_GROUPS[paletteGroup] ?? BLOCK_GROUPS[0];
 
   /**
    * Scroll the panel when a drag reaches its edge.
@@ -599,42 +792,55 @@ function BlockBuilder({
         setDrop(null);
       }}
     >
+      {/* The palette is pinned at the top of the builder: the macro scrolls
+          under it, so the blocks are always within reach however long the
+          macro gets. Tabs keep it to two rows instead of five stacked groups. */}
       <div className="pal">
-        <span className="hb__rail-label" style={{ padding: "0 2px 6px" }}>
-          Blocks. Drag one in, or click to add it at the end.
-        </span>
+        <div className="pal__tabs" role="tablist" aria-label="Block groups">
+          {BLOCK_GROUPS.map((group, index) => (
+            <button
+              key={group.title}
+              type="button"
+              role="tab"
+              aria-selected={index === paletteGroup}
+              className={`pal__tab${index === paletteGroup ? " pal__tab--on" : ""}`}
+              onClick={() => setPaletteGroup(index)}
+            >
+              {group.title}
+            </button>
+          ))}
+        </div>
         <div className="pal__row">
-          {BLOCK_ORDER.map((kind) => (
+          {shownGroup.kinds.map((kind) => (
             <button
               key={kind}
               type="button"
               className="pal__item"
               draggable
+              title={`Drag “${BLOCK_LABELS[kind]}” into the macro, or click to add it at the end`}
               onDragStart={() => setDrag({ source: "palette", make: fresh(kind) })}
               onClick={() => append(fresh(kind))}
             >
-              <span className="pal__grip" aria-hidden="true">
-                ⠿
-              </span>
               {BLOCK_LABELS[kind]}
             </button>
           ))}
           {/* A drag is the click block's mode, but it sits here as its own
               button: it is the block people reach for by name, and one drop
               puts it anywhere in the tree, including inside a Repeat. */}
-          <button
-            type="button"
-            className="pal__item"
-            draggable
-            onDragStart={() => setDrag({ source: "palette", make: DRAG_TEMPLATE })}
-            onClick={() => append(DRAG_TEMPLATE)}
-          >
-            <span className="pal__grip" aria-hidden="true">
-              ⠿
-            </span>
-            Click and drag
-          </button>
+          {shownGroup.title === "Input" && (
+            <button
+              type="button"
+              className="pal__item"
+              draggable
+              title="Drag “Click and drag” into the macro, or click to add it at the end"
+              onDragStart={() => setDrag({ source: "palette", make: DRAG_TEMPLATE })}
+              onClick={() => append(DRAG_TEMPLATE)}
+            >
+              Click and drag
+            </button>
+          )}
         </div>
+        <span className="pal__hint">Drag a block into the macro, or click to add it at the end.</span>
       </div>
 
       <div className="blk__list" style={{ marginTop: 12 }}>
@@ -690,23 +896,24 @@ function BlockNode({
   onSwap,
 }: {
   step: Step;
-  path: number[];
+  path: Path;
   depth: number;
   keys: View["keys"];
-  picking: number[] | null;
-  onPick: (path: number[]) => void;
+  picking: Path | null;
+  onPick: (path: Path) => void;
   drag: Drag | null;
   drop: Drop | null;
   setDrag: (drag: Drag | null) => void;
   setDrop: (drop: Drop | null) => void;
   onDropTarget: (target: Drop) => void;
-  onReplace: (path: number[], step: Step) => void;
-  onRemove: (path: number[]) => void;
-  onSwap: (path: number[], by: number) => void;
+  onReplace: (path: Path, step: Step) => void;
+  onRemove: (path: Path) => void;
+  onSwap: (path: Path, by: number) => void;
 }) {
-  const index = path[path.length - 1];
+  const tail = path[path.length - 1];
+  const index = typeof tail === "number" ? tail : 0;
   const parent = path.slice(0, -1);
-  const isRepeat = step.kind === "repeat";
+  const isRepeat = step.kind === "repeat" || step.kind === "while";
   const dragging = drag?.source === "tree" && samePath(drag.path, path);
 
   /** Which third of the row the pointer is over decides where it lands. */
@@ -714,7 +921,8 @@ function BlockNode({
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = (event.clientY - rect.top) / Math.max(1, rect.height);
     if (isRepeat && ratio > 0.34 && ratio < 0.66 && depth < MAX_DEPTH) {
-      const children = step.kind === "repeat" ? step.steps.length : 0;
+      const children =
+        step.kind === "repeat" || step.kind === "while" ? step.steps.length : 0;
       return { parent: path, index: children };
     }
     return ratio < 0.5 ? { parent, index } : { parent, index: index + 1 };
@@ -800,15 +1008,17 @@ function BlockNode({
         )}
       </div>
 
-      {step.kind === "repeat" && (
+      {branchAreas(step, path).map((area) => (
         <div
-          className={`blk__children${drop && samePath(drop.parent, path) ? " blk__children--active" : ""}`}
+          key={area.key}
+          className={`blk__children${drop && samePath(drop.parent, area.parent) ? " blk__children--active" : ""}`}
         >
-          {step.steps.map((child, at) => (
+          {area.label && <span className="blk__branch">{area.label}</span>}
+          {area.steps.map((child, at) => (
             <BlockNode
-              key={keyAt([...path, at])}
+              key={keyAt([...area.parent, at])}
               step={child}
-              path={[...path, at]}
+              path={[...area.parent, at]}
               depth={depth + 1}
               keys={keys}
               picking={picking}
@@ -824,15 +1034,15 @@ function BlockNode({
             />
           ))}
           <Tail
-            parent={path}
-            active={Boolean(drop && samePath(drop.parent, path))}
-            onHover={() => setDrop({ parent: path, index: step.steps.length })}
-            onDrop={() => onDropTarget({ parent: path, index: step.steps.length })}
-            empty={step.steps.length === 0}
-            label="Drag blocks in here"
+            parent={area.parent}
+            active={Boolean(drop && samePath(drop.parent, area.parent))}
+            onHover={() => setDrop({ parent: area.parent, index: area.steps.length })}
+            onDrop={() => onDropTarget({ parent: area.parent, index: area.steps.length })}
+            empty={area.steps.length === 0}
+            label={area.emptyLabel}
           />
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -845,7 +1055,7 @@ function Tail({
   empty,
   label = "Drop a block here",
 }: {
-  parent: number[];
+  parent: Path;
   active: boolean;
   onHover: () => void;
   onDrop: () => void;
@@ -983,6 +1193,305 @@ function PointFields({
           onValueChange={(next) => onChange(x, next)}
         />
       </span>
+    </>
+  );
+}
+
+/** The picture a block looks for, with a thumbnail once one is picked. */
+function PictureField({
+  image,
+  picking,
+  onPick,
+}: {
+  image: string;
+  picking: boolean;
+  onPick: () => void;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    if (!image) {
+      setSrc(null);
+      return;
+    }
+    picturePreview(image)
+      .then((url) => {
+        if (live) setSrc(url);
+      })
+      .catch(() => {
+        if (live) setSrc(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [image]);
+
+  return (
+    <span
+      className="blk__picture"
+      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          style={{ height: 30, maxWidth: 120, objectFit: "contain", borderRadius: 4 }}
+        />
+      ) : (
+        <span className="blk__hint">
+          {image ? "the picture is missing — pick it again" : "No picture yet"}
+        </span>
+      )}
+      <button type="button" className="hb__mini" disabled={picking} onClick={onPick}>
+        {picking ? "Waiting for the screen…" : src ? "Pick another…" : "Pick picture…"}
+      </button>
+    </span>
+  );
+}
+
+/** How alike the screen has to be for a picture to count, as a percentage. */
+function SimilarityField({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="hb__check" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <input
+        type="range"
+        min={50}
+        max={100}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        style={{ width: 96 }}
+      />
+      <span className="hb__field-label">{value}% alike</span>
+    </label>
+  );
+}
+
+/**
+ * Another macro, or a recording, chosen by name with its id kept beside it.
+ *
+ * Both lists come from the same command; which one is shown is the only thing
+ * the two blocks differ by, so there is one field rather than two.
+ */
+function ChoiceField({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: "macros" | "recordings";
+  value: string;
+  onChange: (choice: { id: string; name: string }) => void;
+}) {
+  const [choices, setChoices] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    blockChoices()
+      .then((all) => {
+        if (live) setChoices(all[kind]);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [kind]);
+
+  return (
+    <select
+      className="hb__field hb__field--short"
+      value={value}
+      onChange={(event) => {
+        const found = choices.find((choice) => choice.id === event.target.value);
+        onChange(found ?? { id: "", name: "" });
+      }}
+    >
+      <option value="">
+        {kind === "macros" ? "choose a macro" : "choose a recording"}
+      </option>
+      {choices.map((choice) => (
+        <option key={choice.id} value={choice.id}>
+          {choice.name}
+        </option>
+      ))}
+      {/* A block whose macro was renamed, or deleted, still says which one it
+          was saved with instead of silently showing nothing. */}
+      {value && !choices.some((choice) => choice.id === value) && (
+        <option value={value}>the one this block was saved with</option>
+      )}
+    </select>
+  );
+}
+
+/**
+ * The title of a window to look for, with the windows that are open right now
+ * offered as suggestions. Still a plain text field: the window a macro wants is
+ * often not running while the macro is being written.
+ */
+function WindowTitleField({
+  contains,
+  onChange,
+}: {
+  contains: string;
+  onChange: (title: string) => void;
+}) {
+  const [titles, setTitles] = useState<string[]>([]);
+  // Each block gets its own list: the id is the only thing tying the field to
+  // it, and two blocks sharing one would offer the same titles twice.
+  const id = useRef(`hb-windows-${Math.random().toString(36).slice(2, 8)}`).current;
+
+  useEffect(() => {
+    let live = true;
+    runningWindows()
+      .then((open) => {
+        if (live) setTitles(open.slice(0, 40));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <input
+        className="hb__field hb__field--short"
+        list={id}
+        aria-label="Window title"
+        placeholder="part of the title"
+        value={contains}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <datalist id={id}>
+        {titles.map((title) => (
+          <option key={title} value={title} />
+        ))}
+      </datalist>
+    </>
+  );
+}
+
+/**
+ * A program's path, with the system's file dialog behind a button so nobody has
+ * to type one. The dialog is modal and answers long after the click, so it
+ * arrives as an event — and only the field that opened it takes the answer.
+ */
+function ProgramField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (path: string) => void;
+}) {
+  const [choosing, setChoosing] = useState(false);
+  const waiting = useRef(false);
+  const latest = useRef(onChange);
+
+  useEffect(() => {
+    latest.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    let live = true;
+    void on<string>(MACRO_PROGRAM, (path) => {
+      if (!waiting.current) return;
+      waiting.current = false;
+      setChoosing(false);
+      latest.current(path);
+    }).then((stop) => {
+      if (!live) stop();
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  return (
+    <>
+      <input
+        className="hb__field hb__field--short"
+        aria-label="Program"
+        placeholder="its full path"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <button
+        type="button"
+        className="hb__mini"
+        disabled={choosing}
+        onClick={() => {
+          waiting.current = true;
+          setChoosing(true);
+          void chooseProgram();
+        }}
+      >
+        {choosing ? "Choosing…" : "Choose program…"}
+      </button>
+    </>
+  );
+}
+
+/** The question an If or a While asks, borrowed from the block that asks it. */
+type MacroCondition = Extract<Step, { kind: "if" }>["condition"];
+
+/**
+ * The question an If or a While asks.
+ *
+ * Shared, because the two blocks differ in what they do with the answer, not
+ * in how they ask it.
+ */
+function ConditionFields({
+  condition,
+  picking,
+  onPick,
+  onChange,
+}: {
+  condition: MacroCondition;
+  picking: boolean;
+  onPick: () => void;
+  onChange: (condition: MacroCondition) => void;
+}) {
+  return (
+    <>
+      <SegmentedControl
+        label="Check"
+        options={[
+          { value: "picture", label: "A picture" },
+          { value: "front", label: "A program" },
+        ]}
+        value={condition.kind}
+        onValueChange={(value) =>
+          onChange(
+            value === "picture"
+              ? { kind: "picture", image: "", similarity: 90 }
+              : { kind: "front", program: "" },
+          )
+        }
+      />
+      {condition.kind === "picture" ? (
+        <>
+          <PictureField image={condition.image} picking={picking} onPick={onPick} />
+          <SimilarityField
+            value={condition.similarity}
+            onChange={(similarity) => onChange({ ...condition, similarity })}
+          />
+        </>
+      ) : (
+        <input
+          className="hb__field hb__field--short"
+          list="hb-macro-programs"
+          aria-label="Program to check for"
+          placeholder="any program"
+          value={condition.program}
+          onChange={(event) => onChange({ kind: "front", program: event.target.value })}
+        />
+      )}
     </>
   );
 }
@@ -1253,6 +1762,78 @@ function BlockFields({
         </div>
       );
 
+    case "if": {
+      const condition = step.condition;
+      return (
+        <div className="blk__fields">
+          <ConditionFields
+            condition={condition}
+            picking={picking}
+            onPick={onPick}
+            onChange={(next) => onReplace({ ...step, condition: next })}
+          />
+          <span className="blk__hint">
+            Runs the blocks under Then when the check is true, and the ones under Otherwise when
+            it is not. It looks once — a block that waits is Wait for picture.
+          </span>
+        </div>
+      );
+    }
+
+    case "waitImage":
+      return (
+        <div className="blk__fields">
+          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <NumberField
+            label="Wait up to"
+            value={step.timeoutMs}
+            onValueChange={(timeoutMs) => onReplace({ ...step, timeoutMs })}
+          />
+          <span className="hb__field-label">ms, or 0 to look once</span>
+          <SimilarityField
+            value={step.similarity}
+            onChange={(similarity) => onReplace({ ...step, similarity })}
+          />
+          <span className="blk__hint">
+            Waits until the picture is on screen, then carries on. If it never turns up, the
+            run stops and says so.
+          </span>
+        </div>
+      );
+
+    case "clickImage":
+      return (
+        <div className="blk__fields">
+          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <SegmentedControl
+            label="Mouse button"
+            options={[
+              { value: "left", label: "Left" },
+              { value: "right", label: "Right" },
+              { value: "middle", label: "Middle" },
+            ]}
+            value={step.button}
+            onValueChange={(value) =>
+              onReplace({ ...step, button: value as MouseButton })
+            }
+          />
+          <NumberField
+            label="Wait up to"
+            value={step.timeoutMs}
+            onValueChange={(timeoutMs) => onReplace({ ...step, timeoutMs })}
+          />
+          <span className="hb__field-label">ms before giving up</span>
+          <SimilarityField
+            value={step.similarity}
+            onChange={(similarity) => onReplace({ ...step, similarity })}
+          />
+          <span className="blk__hint">
+            Clicks the middle of the picture wherever it is now, so the block survives a window
+            that moved.
+          </span>
+        </div>
+      );
+
     case "scroll":
       return (
         <div className="blk__fields">
@@ -1308,5 +1889,518 @@ function BlockFields({
           <span className="hb__field-label">times over</span>
         </div>
       );
+
+    case "note":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field"
+            aria-label="Note"
+            placeholder="What this part of the macro is for"
+            value={step.text}
+            onChange={(event) => onReplace({ ...step, text: event.target.value })}
+          />
+          <span className="blk__hint">
+            A note for whoever reads the macro — including you in six months. It runs nothing
+            and counts as nothing.
+          </span>
+        </div>
+      );
+
+    case "log":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field"
+            aria-label="Log line"
+            placeholder="where the run has got to"
+            value={step.text}
+            onChange={(event) => onReplace({ ...step, text: event.target.value })}
+          />
+          <span className="blk__hint">
+            Written into the run's report, so a long macro can say where it got to.
+          </span>
+        </div>
+      );
+
+    case "randomDelay":
+      return (
+        <div className="blk__fields">
+          <NumberField
+            label="At least"
+            value={step.minMs}
+            onValueChange={(minMs) => onReplace({ ...step, minMs })}
+          />
+          <span className="hb__field-label">to</span>
+          <NumberField
+            label="At most"
+            value={step.maxMs}
+            onValueChange={(maxMs) => onReplace({ ...step, maxMs })}
+          />
+          <span className="hb__field-label">ms, picked at random</span>
+          <span className="blk__hint">
+            Different every run: a pause that is never the same twice is harder to spot than a
+            fixed one.
+          </span>
+        </div>
+      );
+
+    case "chord":
+      return (
+        <div className="blk__fields">
+          {step.scans.map((scan, index) => (
+            <div key={index} className="blk__fields">
+              <KeyBinder
+                scan={scan}
+                label={keys.find((key) => key.scan === scan)?.label ?? keyLabel(scan)}
+                onChange={(next) => {
+                  const scans = [...step.scans];
+                  scans[index] = next;
+                  onReplace({ ...step, scans });
+                }}
+              />
+              <button
+                type="button"
+                className="hb__mini"
+                onClick={() =>
+                  onReplace({ ...step, scans: step.scans.filter((_, at) => at !== index) })
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+          {step.scans.length < 4 && (
+            <button
+              type="button"
+              className="hb__mini"
+              onClick={() => onReplace({ ...step, scans: [...step.scans, 0x1d] })}
+            >
+              Add a key
+            </button>
+          )}
+          <NumberField
+            label="Hold together"
+            value={step.holdMs}
+            onValueChange={(holdMs) => onReplace({ ...step, holdMs })}
+          />
+          <span className="hb__field-label">ms</span>
+          <span className="blk__hint">
+            Presses every key, holds them together, then lets go in reverse — Ctrl+Shift+S as one
+            block instead of six.
+          </span>
+        </div>
+      );
+
+    case "scrollAt":
+      return (
+        <div className="blk__fields">
+          <PointFields
+            x={step.x}
+            y={step.y}
+            onChange={(x, y) => onReplace({ ...step, x, y })}
+          />
+          <button type="button" className="hb__mini" disabled={picking} onClick={onPick}>
+            {picking ? "Waiting for a spot…" : "Pick spot…"}
+          </button>
+          <SegmentedControl
+            label="Scroll direction"
+            options={[
+              { value: "up", label: "Up" },
+              { value: "down", label: "Down" },
+            ]}
+            value={step.amount < 0 ? "down" : "up"}
+            onValueChange={(value) =>
+              onReplace({ ...step, amount: Math.abs(step.amount) * (value === "up" ? 1 : -1) })
+            }
+          />
+          <NumberField
+            label="Notches"
+            value={Math.abs(step.amount)}
+            onValueChange={(notches) =>
+              onReplace({
+                ...step,
+                amount: Math.max(1, Math.min(100, notches)) * (step.amount < 0 ? -1 : 1),
+              })
+            }
+          />
+          <span className="blk__hint">
+            Moves the cursor there and scrolls in one step, so the wheel never lands wherever the
+            cursor happened to be.
+          </span>
+        </div>
+      );
+
+    case "until":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field hb__field--short"
+            type="time"
+            aria-label="Time of day"
+            value={step.at}
+            onChange={(event) => onReplace({ ...step, at: event.target.value })}
+          />
+          <span className="blk__hint">
+            Not before that time: if it has already been and gone today, the block does not
+            wait. It is a gate, not an alarm.
+          </span>
+        </div>
+      );
+
+    case "repeatFor":
+      return (
+        <div className="blk__fields">
+          <span className="hb__field-label">Keep running these blocks for</span>
+          <NumberField
+            label="Seconds"
+            value={step.seconds}
+            onValueChange={(seconds) =>
+              onReplace({ ...step, seconds: Math.max(1, Math.min(3_600, seconds)) })
+            }
+          />
+          <span className="hb__field-label">seconds</span>
+        </div>
+      );
+
+    case "stop":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field"
+            aria-label="Stop reason"
+            placeholder="why the run ends here"
+            value={step.reason}
+            onChange={(event) => onReplace({ ...step, reason: event.target.value })}
+          />
+          <span className="blk__hint">
+            Ends the run here and keeps the reason in the report. The blocks after it do not run.
+          </span>
+        </div>
+      );
+
+    case "fail":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field"
+            aria-label="Failure message"
+            placeholder="what went wrong"
+            value={step.message}
+            onChange={(event) => onReplace({ ...step, message: event.target.value })}
+          />
+          <span className="blk__hint">
+            Ends the run as a failure. The difference from Stop is the word “Failed” in the
+            report, which is what makes a long run readable afterwards.
+          </span>
+        </div>
+      );
+
+    case "assertImage":
+      return (
+        <div className="blk__fields">
+          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <SimilarityField
+            value={step.similarity}
+            onChange={(similarity) => onReplace({ ...step, similarity })}
+          />
+          <span className="blk__hint">
+            Looks once and stops the run if the picture is not there: Wait for picture without the
+            waiting.
+          </span>
+        </div>
+      );
+
+    case "focus": {
+      const target = step.target;
+      return (
+        <div className="blk__fields">
+          <SegmentedControl
+            label="Find the window by"
+            options={[
+              { value: "title", label: "Its title" },
+              { value: "program", label: "Its program" },
+            ]}
+            value={target.kind}
+            onValueChange={(value) =>
+              onReplace({
+                ...step,
+                target:
+                  value === "title"
+                    ? { kind: "title", contains: "", exact: false }
+                    : { kind: "program", exe: "" },
+              })
+            }
+          />
+          {target.kind === "title" ? (
+            <>
+              <WindowTitleField
+                contains={target.contains}
+                onChange={(contains) =>
+                  onReplace({ ...step, target: { ...target, contains } })
+                }
+              />
+              <label className="hb__check">
+                <input
+                  type="checkbox"
+                  checked={target.exact}
+                  onChange={(event) =>
+                    onReplace({
+                      ...step,
+                      target: { ...target, exact: event.target.checked },
+                    })
+                  }
+                />
+                the whole title, exactly
+              </label>
+            </>
+          ) : (
+            <input
+              className="hb__field hb__field--short"
+              list="hb-macro-programs"
+              aria-label="Program to focus"
+              placeholder="game.exe"
+              value={target.exe}
+              onChange={(event) =>
+                onReplace({
+                  ...step,
+                  target: { kind: "program", exe: event.target.value },
+                })
+              }
+            />
+          )}
+          <NumberField
+            label="Wait up to"
+            value={step.timeoutMs}
+            onValueChange={(timeoutMs) => onReplace({ ...step, timeoutMs })}
+          />
+          <span className="hb__field-label">ms for a window to turn up</span>
+          <span className="blk__hint">
+            Brings the window to the front and gives it the keyboard. 0 ms looks once; enough
+            milliseconds waits for a program that is still starting.
+          </span>
+        </div>
+      );
+    }
+
+    case "launch":
+      return (
+        <div className="blk__fields">
+          <ProgramField
+            value={step.path}
+            onChange={(path) => onReplace({ ...step, path })}
+          />
+          <input
+            className="hb__field"
+            aria-label="Arguments"
+            placeholder="--windowed"
+            value={step.args}
+            onChange={(event) => onReplace({ ...step, args: event.target.value })}
+          />
+          <label className="hb__check">
+            <input
+              type="checkbox"
+              checked={step.waitForWindow}
+              onChange={(event) =>
+                onReplace({ ...step, waitForWindow: event.target.checked })
+              }
+            />
+            wait for its window
+          </label>
+          {step.waitForWindow && (
+            <>
+              <NumberField
+                label="Wait up to"
+                value={step.timeoutMs}
+                onValueChange={(timeoutMs) => onReplace({ ...step, timeoutMs })}
+              />
+              <span className="hb__field-label">ms</span>
+            </>
+          )}
+          <span className="blk__hint">
+            Arguments are passed exactly as written: there is no shell here to expand anything.
+            Waiting needs the program to have a window of its own — a launcher that hands off
+            will time out.
+          </span>
+        </div>
+      );
+
+    case "clipboard":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field"
+            aria-label="Text to copy"
+            placeholder="text to put on the clipboard"
+            value={step.text}
+            onChange={(event) => onReplace({ ...step, text: event.target.value })}
+          />
+          <span className="blk__hint">
+            Replaces what is on the clipboard. The next block can paste it with a chord.
+          </span>
+        </div>
+      );
+
+    case "screenshot":
+      return (
+        <div className="blk__fields">
+          <input
+            className="hb__field hb__field--short"
+            aria-label="Screenshot name"
+            placeholder="after the fight"
+            value={step.name}
+            onChange={(event) => onReplace({ ...step, name: event.target.value })}
+          />
+          <span className="hb__field-label">name</span>
+          <button type="button" className="hb__mini" disabled={picking} onClick={onPick}>
+            {picking ? "Waiting for an area…" : "Pick area…"}
+          </button>
+          <NumberField
+            label="X"
+            value={step.x}
+            onValueChange={(x) => onReplace({ ...step, x })}
+          />
+          <NumberField
+            label="Y"
+            value={step.y}
+            onValueChange={(y) => onReplace({ ...step, y })}
+          />
+          <NumberField
+            label="Width"
+            value={step.width}
+            onValueChange={(width) => onReplace({ ...step, width })}
+          />
+          <NumberField
+            label="Height"
+            value={step.height}
+            onValueChange={(height) => onReplace({ ...step, height })}
+          />
+          <span className="blk__hint">
+            Saved as a PNG in the screenshots folder beside the settings, named for this block
+            and the moment it was taken.
+          </span>
+        </div>
+      );
+
+    case "callMacro":
+      return (
+        <div className="blk__fields">
+          <ChoiceField
+            kind="macros"
+            value={step.id}
+            onChange={({ id, name }) => onReplace({ ...step, id, name })}
+          />
+          <span className="blk__hint">
+            Runs that macro's blocks here, under this run: a Stop or a Fail inside it ends this
+            run too. A macro that ends up calling itself is refused, and nesting stops at eight.
+          </span>
+        </div>
+      );
+
+    case "replay":
+      return (
+        <div className="blk__fields">
+          <ChoiceField
+            kind="recordings"
+            value={step.id}
+            onChange={({ id, name }) => onReplace({ ...step, id, name })}
+          />
+          <NumberField
+            label="Play"
+            value={step.passes}
+            onValueChange={(passes) =>
+              onReplace({ ...step, passes: Math.max(1, Math.min(10_000, passes)) })
+            }
+          />
+          <span className="hb__field-label">times</span>
+          <NumberField
+            label="Speed"
+            value={step.speed}
+            onValueChange={(speed) =>
+              onReplace({ ...step, speed: Math.max(0, Math.min(10, speed)) })
+            }
+          />
+          <span className="hb__field-label">× as recorded, or 0 for the replayer's own</span>
+          <span className="blk__hint">
+            Plays the recording inline, with the badge up while it runs. It is a lot of input: the
+            rest of the macro carries on when the last pass ends.
+          </span>
+        </div>
+      );
+
+    case "tool":
+      return (
+        <div className="blk__fields">
+          <select
+            className="hb__field hb__field--short"
+            aria-label="Tool"
+            value={step.tool}
+            onChange={(event) =>
+              onReplace({ ...step, tool: event.target.value as ToolName })
+            }
+          >
+            {(Object.keys(TOOL_LABELS) as ToolName[]).map((tool) => (
+              <option key={tool} value={tool}>
+                {TOOL_LABELS[tool]}
+              </option>
+            ))}
+          </select>
+          <SegmentedControl
+            label="Switch it"
+            options={[
+              { value: "on", label: "On" },
+              { value: "off", label: "Off" },
+            ]}
+            value={step.enabled ? "on" : "off"}
+            onValueChange={(value) => onReplace({ ...step, enabled: value === "on" })}
+          />
+          <span className="blk__hint">
+            Flips the switch and nothing else: switching the clicker on arms it for its shortcut,
+            it does not start clicking. Switching a tool off stops that tool's own run.
+          </span>
+        </div>
+      );
+
+    case "while":
+      return (
+        <div className="blk__fields">
+          <ConditionFields
+            condition={step.condition}
+            picking={picking}
+            onPick={onPick}
+            onChange={(condition) => onReplace({ ...step, condition })}
+          />
+          <NumberField
+            label="At most"
+            value={step.maxIterations}
+            onValueChange={(maxIterations) =>
+              onReplace({ ...step, maxIterations: Math.max(1, Math.min(10_000, maxIterations)) })
+            }
+          />
+          <span className="hb__field-label">passes</span>
+          <NumberField
+            label="For at most"
+            value={Math.round(step.timeoutMs / 1000)}
+            onValueChange={(seconds) =>
+              onReplace({ ...step, timeoutMs: Math.max(1, Math.min(3_600, seconds)) * 1000 })
+            }
+          />
+          <span className="hb__field-label">seconds</span>
+          <span className="blk__hint">
+            Looks at the check before each pass and stops when it is false. If neither limit is
+            reached first, the run stops loudly and says the check never went false — a loop is
+            never allowed to hang.
+          </span>
+        </div>
+      );
+
+    default: {
+      // Every kind in the union is handled above, and this assignment is what
+      // makes TypeScript say so: add a block to `Step` without a case here and
+      // `step` is no longer `never`, so the build fails instead of the block
+      // appearing in the tree with no controls.
+      const unhandled: never = step;
+      return unhandled;
+    }
   }
 }

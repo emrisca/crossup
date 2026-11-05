@@ -147,7 +147,12 @@ export type Outcome = {
   requestedCps: number;
 };
 
-export type MacroReport = { stopReason: string; actions: number };
+export type MacroReport = {
+  stopReason: string;
+  actions: number;
+  /** Lines the run's log blocks wrote, in order. */
+  notes: string[];
+};
 
 export type Activity = {
   running: string | null;
@@ -171,6 +176,11 @@ export type Activity = {
  * click block's own fifth and the engine refuses it on a key. */
 export type PressMode = "tap" | "hold" | "down" | "up" | "drag";
 
+/** What an If block checks. */
+export type Condition =
+  | { kind: "picture"; image: string; similarity: number }
+  | { kind: "front"; program: string };
+
 export type Step =
   | { kind: "key"; scan: number; mode: PressMode; holdMs: number; uppercase: boolean }
   | { kind: "text"; text: string; perCharMs: number }
@@ -188,8 +198,106 @@ export type Step =
       durationMs: number;
     }
   | { kind: "scroll"; amount: number }
+  | {
+      /** Look for a picture on screen and wait until it is there. */
+      kind: "waitImage";
+      /** The saved picture's name, or empty before one is picked. */
+      image: string;
+      /** How long to keep looking; 0 looks once. */
+      timeoutMs: number;
+      /** How alike the screen has to look, as a percentage. */
+      similarity: number;
+    }
+  | {
+      /** Find a picture on screen and click it, wherever it is now. */
+      kind: "clickImage";
+      image: string;
+      button: MouseButton;
+      timeoutMs: number;
+      similarity: number;
+    }
   | { kind: "delay"; ms: number }
-  | { kind: "repeat"; times: number; steps: Step[] };
+  | {
+      /** One of two sets of blocks, chosen by what is on screen. */
+      kind: "if";
+      condition: Condition;
+      /** The blocks to run when the check is true. */
+      steps: Step[];
+      /** The blocks to run when it is not. */
+      otherwise: Step[];
+    }
+  | { kind: "repeat"; times: number; steps: Step[] }
+  /** A note for whoever reads the macro. Runs nothing. */
+  | { kind: "note"; text: string }
+  /** A line for the run's report, so a long macro says where it got to. */
+  | { kind: "log"; text: string }
+  /** Wait a random time between two values. */
+  | { kind: "randomDelay"; minMs: number; maxMs: number }
+  /** Several keys pressed and released together. */
+  | { kind: "chord"; scans: number[]; holdMs: number }
+  /** Move the cursor somewhere and scroll there, as one block. */
+  | { kind: "scrollAt"; x: number; y: number; amount: number }
+  /** Wait until a time of day. A not-before gate, not an alarm. */
+  | { kind: "until"; at: string }
+  /** Run the inner blocks until a number of seconds has passed. */
+  | { kind: "repeatFor"; seconds: number; steps: Step[] }
+  /** End the run here, saying why. */
+  | { kind: "stop"; reason: string }
+  /** End the run as a failure, saying what went wrong. */
+  | { kind: "fail"; message: string }
+  /** The picture has to be on screen right now, or the run stops. */
+  | { kind: "assertImage"; image: string; similarity: number }
+  /** Bring a window in front. */
+  | { kind: "focus"; target: WindowTarget; timeoutMs: number }
+  /** Start a program, and optionally wait until its window is up. */
+  | {
+      kind: "launch";
+      path: string;
+      args: string;
+      waitForWindow: boolean;
+      timeoutMs: number;
+    }
+  /** Put text on the clipboard. */
+  | { kind: "clipboard"; text: string }
+  /** Save an area of the screen as a PNG. */
+  | { kind: "screenshot"; x: number; y: number; width: number; height: number; name: string }
+  /** Run another macro's blocks here. */
+  | { kind: "callMacro"; id: string; name: string }
+  /** Play a saved recording here. */
+  | { kind: "replay"; id: string; name: string; passes: number; speed: number }
+  /** Flip one of the app's switches. */
+  | { kind: "tool"; tool: ToolName; enabled: boolean }
+  /** Repeat the inner blocks while the check holds, up to two caps. */
+  | {
+      kind: "while";
+      condition: Condition;
+      steps: Step[];
+      maxIterations: number;
+      timeoutMs: number;
+    };
+
+/** One of the app's tools, as the switches name them. */
+export type ToolName = "clicker" | "remapper" | "macros" | "typer" | "replay";
+
+/** The same tools, as a sentence reads them. */
+export const TOOL_LABELS: Record<ToolName, string> = {
+  clicker: "the auto clicker",
+  remapper: "the remapper",
+  macros: "macros",
+  typer: "the typer",
+  replay: "the replayer",
+};
+
+/**
+ * What a Focus block is looking for.
+ *
+ * A title is what a person reads in the taskbar; a program is what survives the
+ * title changing with the level or the document being edited. `exact` is only
+ * worth having for a title, where a fragment would match three windows.
+ */
+export type WindowTarget =
+  | { kind: "title"; contains: string; exact: boolean }
+  | { kind: "program"; exe: string };
 
 export type Macro = {
   id: string;
@@ -434,7 +542,12 @@ export type Rect = { x: number; y: number; width: number; height: number };
  * its own value rather than a second `point` because the clicker listens to the
  * same event and would otherwise add the answer to its click points.
  */
-export type PickPurpose = "zone" | "point" | "macro-point";
+export type PickPurpose =
+  | "zone"
+  | "point"
+  | "macro-point"
+  | "macro-picture"
+  | "macro-shot";
 
 /** What to draw, and where to put it when it is drawn. */
 export type PickRequest = {
@@ -452,6 +565,29 @@ export const REGION_PICKED = "region-picked";
 export const PICK_CANCELLED = "region-pick-cancelled";
 /** Emitted to the settings window when a path comes back from the file dialog. */
 export const AUTOSTART_EXE = "autostart-exe";
+/** Emitted when the builder's program dialog answers, with the path. */
+export const MACRO_PROGRAM = "macro-program";
+
+/** The titles of the windows a macro could focus. */
+export function runningWindows(): Promise<string[]> {
+  return call<string[]>("running_windows");
+}
+
+/** Ask for a program to launch, rather than making the person type a path. */
+export function chooseProgram(): Promise<void> {
+  return call<void>("choose_program");
+}
+
+/** One macro or recording a block can point at. */
+export type BlockChoice = { id: string; name: string };
+
+/** Everything a composition block can name. */
+export type BlockChoices = { macros: BlockChoice[]; recordings: BlockChoice[] };
+
+/** The macros and recordings, for the Run another macro and Run a replay blocks. */
+export function blockChoices(): Promise<BlockChoices> {
+  return call<BlockChoices>("block_choices");
+}
 
 /**
  * Ask for a rectangle, drawn by dragging on the desktop.
@@ -462,6 +598,29 @@ export const AUTOSTART_EXE = "autostart-exe";
  */
 export function pickRegion(request: PickRequest): Promise<void> {
   return call<void>("pick_region", { request });
+}
+
+/** A picture saved for a macro block. */
+export type Picture = { id: string; width: number; height: number };
+
+/** Keep a dragged rectangle as a picture the blocks can look for. */
+export function savePicture(rect: Rect): Promise<Picture> {
+  return call<Picture>("save_picture", {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+  });
+}
+
+/** The picture itself, as a data URL, for its thumbnail. */
+export function picturePreview(id: string): Promise<string> {
+  return call<string>("picture_preview", { id });
+}
+
+/** Forget a picture whose block has gone. */
+export function deletePicture(id: string): Promise<void> {
+  return call<void>("delete_picture", { id });
 }
 
 /**
@@ -506,8 +665,82 @@ export const BLOCK_TEMPLATES: Record<Step["kind"], (partial?: object) => Step> =
     ...partial,
   }),
   scroll: (partial) => ({ kind: "scroll", amount: -3, ...partial }),
+  waitImage: (partial) => ({
+    kind: "waitImage",
+    image: "",
+    timeoutMs: 5000,
+    similarity: 90,
+    ...partial,
+  }),
+  clickImage: (partial) => ({
+    kind: "clickImage",
+    image: "",
+    button: "left",
+    timeoutMs: 3000,
+    similarity: 90,
+    ...partial,
+  }),
   delay: (partial) => ({ kind: "delay", ms: 250, ...partial }),
   repeat: (partial) => ({ kind: "repeat", times: 3, steps: [], ...partial }),
+  if: (partial) => ({
+    kind: "if",
+    condition: { kind: "picture", image: "", similarity: 90 },
+    steps: [],
+    otherwise: [],
+    ...partial,
+  }),
+  note: (partial) => ({ kind: "note", text: "", ...partial }),
+  log: (partial) => ({ kind: "log", text: "", ...partial }),
+  randomDelay: (partial) => ({ kind: "randomDelay", minMs: 250, maxMs: 900, ...partial }),
+  chord: (partial) => ({ kind: "chord", scans: [0x1d, 0x2e], holdMs: 80, ...partial }),
+  scrollAt: (partial) => ({ kind: "scrollAt", x: 0, y: 0, amount: -3, ...partial }),
+  until: (partial) => ({ kind: "until", at: "09:00", ...partial }),
+  repeatFor: (partial) => ({ kind: "repeatFor", seconds: 10, steps: [], ...partial }),
+  stop: (partial) => ({ kind: "stop", reason: "", ...partial }),
+  fail: (partial) => ({ kind: "fail", message: "", ...partial }),
+  assertImage: (partial) => ({ kind: "assertImage", image: "", similarity: 90, ...partial }),
+  focus: (partial) => ({
+    kind: "focus",
+    target: { kind: "program", exe: "" },
+    timeoutMs: 5000,
+    ...partial,
+  }),
+  launch: (partial) => ({
+    kind: "launch",
+    path: "",
+    args: "",
+    waitForWindow: true,
+    timeoutMs: 15000,
+    ...partial,
+  }),
+  clipboard: (partial) => ({ kind: "clipboard", text: "", ...partial }),
+  screenshot: (partial) => ({
+    kind: "screenshot",
+    x: 0,
+    y: 0,
+    width: 800,
+    height: 450,
+    name: "",
+    ...partial,
+  }),
+  callMacro: (partial) => ({ kind: "callMacro", id: "", name: "", ...partial }),
+  replay: (partial) => ({
+    kind: "replay",
+    id: "",
+    name: "",
+    passes: 1,
+    speed: 0,
+    ...partial,
+  }),
+  tool: (partial) => ({ kind: "tool", tool: "clicker", enabled: false, ...partial }),
+  while: (partial) => ({
+    kind: "while",
+    condition: { kind: "picture", image: "", similarity: 90 },
+    steps: [],
+    maxIterations: 100,
+    timeoutMs: 60_000,
+    ...partial,
+  }),
 };
 
 export const BLOCK_LABELS: Record<Step["kind"], string> = {
@@ -516,8 +749,29 @@ export const BLOCK_LABELS: Record<Step["kind"], string> = {
   move: "Move mouse",
   click: "Click",
   scroll: "Scroll",
+  waitImage: "Wait for picture",
+  clickImage: "Click picture",
   delay: "Wait",
   repeat: "Repeat",
+  if: "If",
+  note: "Note",
+  log: "Log a line",
+  randomDelay: "Random wait",
+  chord: "Key chord",
+  scrollAt: "Scroll at a point",
+  until: "Wait until a time",
+  repeatFor: "Repeat for a while",
+  stop: "Stop macro",
+  fail: "Fail",
+  assertImage: "Picture must be there",
+  focus: "Focus a window",
+  launch: "Start a program",
+  clipboard: "Copy to clipboard",
+  screenshot: "Save a screenshot",
+  callMacro: "Run another macro",
+  replay: "Run a replay",
+  tool: "Turn a tool on or off",
+  while: "While it is true",
 };
 
 /** A fresh drag: a click block whose mode is `drag`, which presses, travels and lets go.
@@ -537,6 +791,24 @@ export function stepSummary(step: Step, keys: KeyView[]): string {
   const label = (scan: number) =>
     keys.find((key) => key.scan === scan)?.label ?? keyLabel(scan);
   switch (step.kind) {
+    case "if": {
+      const check =
+        step.condition.kind === "picture"
+          ? "the picture is on screen"
+          : `${step.condition.program || "a program"} is in front`;
+      const otherwise = step.otherwise.length
+        ? `, ${step.otherwise.length} otherwise`
+        : "";
+      return `If ${check}: ${step.steps.length} blocks${otherwise}`;
+    }
+    case "waitImage":
+      return step.timeoutMs > 0
+        ? `Look for the picture, up to ${step.timeoutMs} ms`
+        : "Look for the picture once";
+    case "clickImage": {
+      const wait = step.timeoutMs > 0 ? `, up to ${step.timeoutMs} ms` : "";
+      return `Click the picture with the ${step.button} button${wait}`;
+    }
     case "key": {
       const prefix = step.uppercase ? "Shift+" : "";
       if (step.mode === "tap") return `Tap ${prefix}${label(step.scan)}`;
@@ -573,6 +845,64 @@ export function stepSummary(step: Step, keys: KeyView[]): string {
       return `Wait ${step.ms} ms`;
     case "repeat":
       return `Repeat ${step.times}× (${step.steps.length} block${step.steps.length === 1 ? "" : "s"})`;
+    case "note":
+      return step.text.trim() ? `Note “${step.text.slice(0, 40)}”` : "Note";
+    case "log":
+      return `Log “${step.text.slice(0, 40)}”`;
+    case "randomDelay":
+      return `Wait ${step.minMs}–${step.maxMs} ms, picked at random`;
+    case "chord":
+      return `${step.scans.map((scan) => label(scan)).join("+")} together, held ${step.holdMs} ms`;
+    case "scrollAt":
+      return `Scroll ${Math.abs(step.amount)} ${step.amount < 0 ? "down" : "up"} at ${step.x}, ${step.y}`;
+    case "until":
+      return `Wait until ${step.at}`;
+    case "repeatFor":
+      return `Run ${step.steps.length} block${step.steps.length === 1 ? "" : "s"} for ${step.seconds} s`;
+    case "stop":
+      return step.reason.trim() ? `Stop: “${step.reason}”` : "Stop the macro";
+    case "fail":
+      return `Fail: “${step.message}”`;
+    case "assertImage":
+      return "The picture has to be on screen";
+    case "focus": {
+      const what =
+        step.target.kind === "program"
+          ? step.target.exe.trim()
+          : step.target.exact
+            ? `“${step.target.contains.trim()}”`
+            : `a window titled “${step.target.contains.trim()}”`;
+      return step.timeoutMs ? `Focus ${what}, up to ${step.timeoutMs} ms` : `Focus ${what}`;
+    }
+    case "launch": {
+      const name = step.path.trim().split(/[\\/]/).pop() || step.path.trim();
+      const args = step.args.trim() ? ` ${step.args.trim()}` : "";
+      return step.waitForWindow
+        ? `Start ${name}${args} and wait for its window`
+        : `Start ${name}${args}`;
+    }
+    case "clipboard":
+      return `Copy ${step.text.length} characters`;
+    case "screenshot":
+      return step.name.trim()
+        ? `Save a ${step.width}×${step.height} screenshot as “${step.name.trim()}”`
+        : `Save a ${step.width}×${step.height} screenshot`;
+    case "callMacro":
+      return step.name.trim() ? `Run “${step.name.trim()}”` : "Run another macro";
+    case "replay": {
+      const label = step.name.trim() ? `“${step.name.trim()}”` : "a recording";
+      const times = step.passes === 1 ? "once" : `${step.passes} times`;
+      return `Play ${label} ${times}${step.speed > 0 ? ` at ${step.speed}×` : ""}`;
+    }
+    case "tool":
+      return `${step.enabled ? "Turn on" : "Turn off"} ${TOOL_LABELS[step.tool]}`;
+    case "while": {
+      const check =
+        step.condition.kind === "picture"
+          ? "while the picture is on screen"
+          : `while ${step.condition.program} is in front`;
+      return `${check}: ${step.steps.length} blocks, at most ${step.maxIterations} passes`;
+    }
   }
 }
 
@@ -908,7 +1238,7 @@ function mockStop(reason: string) {
         : mockActivity.last,
     lastMacro:
       finished && finished !== "clicker"
-        ? { stopReason: `${finished}: ${reason}`, actions: 0 }
+        ? { stopReason: `${finished}: ${reason}`, actions: 0, notes: [] }
         : mockActivity.lastMacro,
   };
 }
@@ -1406,10 +1736,34 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
         );
       }, 0);
       break;
+    case "save_picture": {
+      const width = Number(args?.width ?? 0);
+      const height = Number(args?.height ?? 0);
+      return { id: `pic-preview-${width}x${height}`, width, height } as T;
+    }
+    case "picture_preview":
+      // A one-pixel PNG, so a block shows a thumbnail in the browser too.
+      return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" as T;
+    case "delete_picture":
+      break;
     case "pick_region": {
       const request = args?.request as PickRequest;
-      const width = request.purpose === "zone" ? 320 : 0;
-      const height = request.purpose === "zone" ? 200 : 0;
+      const width =
+        request.purpose === "zone"
+          ? 320
+          : request.purpose === "macro-picture"
+            ? 64
+            : request.purpose === "macro-shot"
+              ? 480
+              : 0;
+      const height =
+        request.purpose === "zone"
+          ? 200
+          : request.purpose === "macro-picture"
+            ? 40
+            : request.purpose === "macro-shot"
+              ? 270
+              : 0;
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent(REGION_PICKED, {
@@ -1426,6 +1780,29 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       }, 0);
       break;
     }
+    case "running_windows":
+      // Enough titles to show the suggestions working in a browser.
+      return ["Counter-Strike 2", "Notepad", "Visual Studio Code"] as T;
+    case "choose_program":
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(MACRO_PROGRAM, {
+            detail: "C:\\Program Files\\Game\\game.exe",
+          }),
+        );
+      }, 0);
+      break;
+    case "block_choices":
+      return {
+        macros: [
+          { id: "macro-1", name: "Open the menu" },
+          { id: "macro-2", name: "Buy and equip" },
+        ],
+        recordings: mock.replay.recordings.map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+        })),
+      } as T;
     case "picker_context":
     case "picker_finish":
     case "picker_cancel":

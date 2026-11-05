@@ -10,6 +10,7 @@
 
 mod autostart;
 mod clicker;
+pub mod clipboard;
 mod config;
 mod hook;
 mod input;
@@ -17,11 +18,16 @@ mod keys;
 mod macros;
 mod mouse_hotkeys;
 mod picker;
+mod pictures;
+mod vision;
 mod replay;
 mod runtime;
+mod screenshots;
 mod socd;
+pub mod spawn;
 mod typer;
 mod update;
+pub mod window;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -415,6 +421,7 @@ fn delete_macro(
 
 #[tauri::command]
 fn run_macro(
+    app: AppHandle,
     state: State<'_, SharedState>,
     runtime: State<'_, RuntimeState>,
     id: String,
@@ -429,7 +436,7 @@ fn run_macro(
         .find(|entry| entry.id == id)
         .cloned()
         .ok_or_else(|| "that macro is no longer in the list".to_string())?;
-    runtime::start_macro(&runtime, &definition)?;
+    runtime::start_macro(&runtime, &app, &definition)?;
     Ok(snapshot(state))
 }
 
@@ -613,64 +620,9 @@ fn set_tool_enabled(
     tool: String,
     enabled: bool,
 ) -> View {
-    let (settings, actions) = {
-        let mut shared = state.lock().unwrap();
-        let actions = match tool.as_str() {
-            "remapper" => {
-                shared.settings.hook_enabled = enabled;
-                if enabled {
-                    Vec::new()
-                } else {
-                    shared.engine.release_all()
-                }
-            }
-            "clicker" => {
-                shared.settings.clicker_enabled = enabled;
-                Vec::new()
-            }
-            "macros" => {
-                shared.settings.macros_enabled = enabled;
-                Vec::new()
-            }
-            "typer" => {
-                shared.settings.typer_enabled = enabled;
-                Vec::new()
-            }
-            "replay" => {
-                shared.settings.replay_enabled = enabled;
-                Vec::new()
-            }
-            _ => Vec::new(),
-        };
-        save(&app, &shared);
-        (shared.settings.clone(), actions)
-    };
-    hook::send_public(&actions);
-
-    // Only the run belonging to the tool being switched off is stopped; a macro
-    // in progress is not the clicker's business.
-    if !enabled {
-        let running = runtime.running();
-        let stop_it = match tool.as_str() {
-            "clicker" => running.as_deref() == Some(runtime::CLICKER),
-            "typer" => running.as_deref() == Some(typer::TYPER),
-            "replay" => running.as_deref() == Some(replay::REPLAY),
-            // A macro in progress is nobody else's business: the named runs
-            // above are excluded so switching the macros off leaves them alone.
-            "macros" => matches!(running.as_deref(), Some(name)
-                if name != runtime::CLICKER
-                    && name != typer::TYPER
-                    && name != replay::REPLAY),
-            _ => false,
-        };
-        if stop_it {
-            runtime.stop();
-        }
-    }
-
-    // The shortcuts follow the switches: a switched-off tool must not start
-    // from a key it no longer owns.
-    runtime::register_shortcuts(&runtime, &app, &settings);
+    // One implementation, shared with the Tool block: two copies of "what a
+    // switch means" would drift.
+    let _ = runtime::apply_tool(&app, &state, &runtime, &tool, enabled, None);
     snapshot(state)
 }
 
@@ -759,6 +711,113 @@ async fn pick_region(app: AppHandle, request: picker::PickRequest) -> Result<(),
 }
 
 /// What the picker should draw, asked by the picker window itself.
+/// Take a dragged rectangle on screen and keep it as a picture for a macro.
+#[tauri::command]
+fn save_picture(
+    app: AppHandle,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> Result<pictures::Picture, String> {
+    pictures::capture(
+        &app,
+        picker::Rect {
+            x,
+            y,
+            width,
+            height,
+        },
+    )
+}
+
+/// The picture itself, as a data URL, for the thumbnail beside its block.
+#[tauri::command]
+fn picture_preview(app: AppHandle, id: String) -> Result<String, String> {
+    pictures::preview(&app, &id)
+}
+
+/// Forget a picture whose block has been removed.
+#[tauri::command]
+fn delete_picture(app: AppHandle, id: String) -> Result<(), String> {
+    pictures::remove(&app, &id)
+}
+
+/// The titles of the windows a macro could focus, for the builder's list.
+#[tauri::command]
+fn running_windows() -> Vec<String> {
+    let mut titles: Vec<String> = window::visible()
+        .into_iter()
+        .map(|found| found.title)
+        .filter(|title| !title.trim().is_empty())
+        .collect();
+    titles.sort_by_key(|title| title.to_lowercase());
+    titles.dedup();
+    titles
+}
+
+/// One macro or recording, as a block's picker lists it.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Choice {
+    id: String,
+    name: String,
+}
+
+/// Everything a composition block can point at.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BlockChoices {
+    macros: Vec<Choice>,
+    recordings: Vec<Choice>,
+}
+
+/// The macros and recordings a block may name.
+#[tauri::command]
+fn block_choices(state: State<'_, SharedState>) -> BlockChoices {
+    let shared = state.lock().unwrap();
+    BlockChoices {
+        macros: shared
+            .settings
+            .macros
+            .iter()
+            .map(|entry| Choice {
+                id: entry.id.clone(),
+                name: entry.name.clone(),
+            })
+            .collect(),
+        recordings: shared
+            .settings
+            .replay
+            .recordings
+            .iter()
+            .map(|entry| Choice {
+                id: entry.id.clone(),
+                name: entry.name.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Ask for a program rather than making the person type its path.
+///
+/// The dialog is modal and answers long after the click, so the answer comes
+/// back as an event to the window that asked, not as this command's return.
+#[tauri::command]
+fn choose_program(app: AppHandle) {
+    let window = app.clone();
+    app.dialog()
+        .file()
+        .set_title("Which program should the macro start?")
+        .add_filter("Programs", &["exe"])
+        .pick_file(move |picked| {
+            let Some(path) = picked else {
+                return;
+            };
+            let _ = window.emit_to("main", "macro-program", path.to_string());
+        });
+}
+
 #[tauri::command]
 fn picker_context(app: AppHandle) -> Option<picker::PickContext> {
     picker::context(&app)
@@ -1233,6 +1292,9 @@ pub fn run() {
             typer::typer_resume,
             typer::typer_stop,
             typer::typer_plan,
+            running_windows,
+            choose_program,
+            block_choices,
             replay::replay_state,
             replay::start_recording,
             replay::stop_recording,
@@ -1248,6 +1310,9 @@ pub fn run() {
             choose_exe,
             pick_region,
             picker_context,
+            save_picture,
+            picture_preview,
+            delete_picture,
             picker_finish,
             picker_cancel,
             update::update_state,

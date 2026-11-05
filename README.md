@@ -343,10 +343,7 @@ ever be offered.
   1 ms timer. With no timer the achieved rate drops at high settings, and that
   panel is how you tell that apart from a bug.
 
-### Macros
-
-- **Blocks** — key, type text, click, move, scroll, wait, repeat, and click and
-  drag. Drag one from the palette into the tree, or click it to append; the
+### Macros- **Blocks** — grouped in the palette as *Input*, *Time*, *Screen* and *Flow*: keys (including a chord), text, clicks, moves, scrolls, waits (fixed, random, or until a time of day), the two picture blocks plus an assertion, and the flow blocks — If, Repeat, Repeat for a while, Note, Log a line, Stop and Fail. Drag one from the palette into the tree, or click it to append; the
   palette's drag entry is the click block in its drag mode, so it lands wherever
   a block can — inside a `Repeat` as readily as at the end. The palette stays at
   the top of the builder while a long macro scrolls under it.
@@ -377,6 +374,73 @@ ever be offered.
   and taking a mouse button or a wheel notch just as readily, optionally only
   while one program is in front, and an on/off switch. A disabled macro keeps
   its blocks.
+- **If** — one of two sets of blocks, chosen by what is on screen: whether a
+  picture is there, or whether a program is in front. The two sets are drawn
+  inside the block as **Then** and **Otherwise**, and blocks nest in both the
+  way they nest in a Repeat. It looks once and moves on — a block that waits for
+  a picture to appear is *Wait for picture*, not an If. Every branch counts   against the same six-level nesting cap as a Repeat.
+- **Time** — a fixed wait, *Random wait* between two values, and *Wait until a
+  time of day*, which is a gate rather than an alarm: if nine o'clock has
+  already been and gone, the block does not wait a day for tomorrow's nine.
+- **Stop, Fail, Log and Note** — *Stop macro* ends the run with what you wrote,
+  *Fail* ends it as a failure, and *Log a line* writes into the run's report so
+  a long macro can say where it got to. *Note* writes nothing at all: it is for
+  whoever reads the macro next, and it counts as no action.
+- **Key chord** — several keys pressed together and let go in reverse, in one
+  block, with the keys added one at a time rather than typed as a string.
+- **Scroll at a point** — move and scroll in one step, so the wheel never lands
+  wherever the cursor happened to be.
+- **Repeat for a while** — run the inner blocks until a number of seconds has
+  passed, which is the version people want for “click this for two minutes”.
+- **Assert picture** — *Wait for picture* without the waiting: one look, and the
+  run stops saying the picture is not on screen.
+- **Focus a window** — brings a window to the front by part of its title or by
+  the program that owns it, and waits for it to exist if the macro is quicker
+  than the program is. The title field offers the windows that are open while
+  you write, and takes any title you type anyway: the window a macro wants is
+  usually not running yet.
+- **Start a program** — a full path (chosen with the file dialog, not typed if
+  you would rather not), its arguments passed through untouched, and the option
+  to wait for its window. It fails while you edit if the program has since been
+  moved, rather than at six in the morning when the macro runs.
+- **Copy to clipboard** — replaces the clipboard, so the next block can paste it
+  with a chord.
+- **Save a screenshot** — an area of the screen as a PNG, named for the block and
+  the moment, in a `screenshots` folder beside the settings. **Pick area…** drags
+  it out the same way a picture is picked.
+- **Run another macro** — a block that points at a macro by name and runs its
+  blocks here, under this run. A Stop or a Fail inside it ends the run that called
+  it too, and its log lines come back into the caller's report. A macro that ends
+  up calling itself is refused at the block that closes the loop, and nesting
+  stops at eight.
+- **Run a replay** — a block that plays a saved recording inline, once or a fixed
+  number of times, at its recorded pace or a multiple of it (0 means “whatever
+  the replayer is set to”). The replay badge comes up while it plays, and the
+  rest of the macro carries on when the last pass ends.
+- **Turn a tool on or off** — the same switches the window has, for the clicker,
+  the remapper, macros, the typer and the replayer. It only flips the switch:
+  switching the clicker on arms it for its shortcut rather than starting it
+  mid-macro, and switching a tool off stops that tool's own run but not the macro
+  doing the switching.
+- **While it is true** — a loop with both of its brakes on. It asks the same
+  question an If does, before each pass, and stops when the answer is false; if
+  the pass limit or the time limit is reached first, the run stops and says the
+  check never went false. A loop with no way out is a hang, so neither limit is
+  optional — but a While on a picture that never leaves the screen will end, with
+  a sentence, rather than spin.
+- **Pictures** — *Wait for picture* and *Click picture* look for a small screenshot
+  of part of the screen and act on where it is now, rather than on where it was
+  when the macro was written. **Pick picture…** draws a sheet over every monitor,
+  the same way a zone is drawn: drag a rectangle around the thing to look for and
+  it is kept as a PNG beside the settings file, never inside it, with a thumbnail
+  on the block. *Wait for picture* polls until the picture appears, then carries
+  on; *Click picture* clicks the middle of it wherever it turned up. Both take a
+  timeout and a match threshold — 90% by default, because a button with different
+  text on it is not the button the macro wants. A picture that never appears
+  stops the run with the reason, instead of clicking the spot it used to occupy.
+  Pictures are stored by name in the block, so deleting one from the settings
+  folder leaves the block saying the picture is missing rather than running
+  blind.
 - **Limits** — nesting is capped at six levels, repeat counts and hold times are
   bounded, and a run has an action budget, so a typo cannot describe a loop that
   runs for a century. Anything a `Down` block left held — a key or a mouse

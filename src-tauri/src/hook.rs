@@ -10,15 +10,12 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{CloseHandle, HANDLE, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
-};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_EXTENDEDKEY,
     KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
+    CallNextHookEx, DispatchMessageW, GetMessageW,
     SetWindowsHookExW, TranslateMessage, HC_ACTION, KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED,
     LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN,
     WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_RBUTTONDOWN,
@@ -283,35 +280,11 @@ fn send(actions: &[Action]) {
 }
 
 /// The executable name of the window in front, e.g. `Overwatch.exe`.
+///
+/// The window side lives in `window`, so the hook and the macro blocks answer
+/// this question from the same code.
 pub fn foreground_program() -> String {
-    unsafe {
-        let window = GetForegroundWindow();
-        if window.is_invalid() {
-            return String::new();
-        }
-        let mut pid = 0u32;
-        GetWindowThreadProcessId(window, Some(&mut pid));
-        if pid == 0 {
-            return String::new();
-        }
-        let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else {
-            return String::new();
-        };
-        let mut buffer = [0u16; 1024];
-        let mut size = buffer.len() as u32;
-        let result = QueryFullProcessImageNameW(
-            process,
-            PROCESS_NAME_WIN32,
-            windows::core::PWSTR(buffer.as_mut_ptr()),
-            &mut size,
-        );
-        let _ = CloseHandle(process);
-        if result.is_err() {
-            return String::new();
-        }
-        let path = String::from_utf16_lossy(&buffer[..size as usize]);
-        path.rsplit(['\\', '/']).next().unwrap_or(&path).to_string()
-    }
+    crate::window::foreground_program()
 }
 
 /// Names of running processes, for the profile picker.

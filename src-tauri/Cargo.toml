@@ -1,6 +1,6 @@
 [package]
 name = "crossup"
-version = "0.2.14"
+version = "0.2.15"
 description = "Key remapper and SOCD tool, rebuilt on Tauri"
 edition = "2021"
 rust-version = "1.77.2"
@@ -23,6 +23,10 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2"
 # Only for the "choose the executable" button in settings, and only from Rust.
 tauri-plugin-dialog = "2"
+# Pictures for the macro blocks: capture is GDI under the crate's own Windows
+# code, and PNG is written and read here rather than pulled in as part of it.
+screenshots = "0.8"
+png = "0.17"
 # Self-update. The release workflow signs each installer with the key whose
 # public half sits in tauri.conf.json, and this refuses anything that signature
 # does not cover.
@@ -31,12 +35,21 @@ tauri-plugin-updater = "2"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
   "Win32_Foundation",
+  # CreateProcessW names its launch security attributes in its signature, so
+  # the function is gated behind this even though nothing here passes one.
+  "Win32_Security",
   "Win32_UI_WindowsAndMessaging",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_System_Threading",
   "Win32_System_Diagnostics_ToolHelp",
   # The sign-in entry lives in HKCU\...\CurrentVersion\Run.
   "Win32_System_Registry",
+  # GetLocalTime, for the block that waits until a time of day.
+  "Win32_System_SystemInformation",
+  # The clipboard blocks: OpenClipboard and friends, and the moveable block
+  # that holds the text once it is there.
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
   # Monitor rectangles: the edge and corner failsafes are measured against each
   # screen, not against the bounding box of all of them.
   "Win32_Graphics_Gdi",

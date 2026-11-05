@@ -221,7 +221,11 @@ pub fn start_clicker(runtime: &Arc<Runtime>, settings: ClickerSettings) -> Resul
 }
 
 /// Run a macro on its own thread.
-pub fn start_macro(runtime: &Arc<Runtime>, definition: &Macro) -> Result<(), String> {
+pub fn start_macro(
+    runtime: &Arc<Runtime>,
+    app: &AppHandle,
+    definition: &Macro,
+) -> Result<(), String> {
     macros::validate(definition)?;
     if !definition.enabled {
         return Err(format!("“{}” is switched off", definition.name));
@@ -232,15 +236,20 @@ pub fn start_macro(runtime: &Arc<Runtime>, definition: &Macro) -> Result<(), Str
 
     let steps = definition.steps.clone();
     let name = definition.name.clone();
+    let app = app.clone();
     let shared = Arc::clone(runtime);
     std::thread::Builder::new()
         .name("hitboxer-macro".into())
         .spawn(move || {
-            let mut runner = WindowsRunner;
+            // The list a called macro or a recording is looked up in, read from
+            // the app rather than threaded through every caller of start_macro.
+            let settings = app.state::<SharedState>().inner().clone();
+            let mut runner = WindowsRunner::new(app, settings);
             let report = macros::play(&steps, &mut runner, Arc::clone(&stop));
             shared.state.lock().unwrap().last_macro = Some(Report {
                 stop_reason: format!("{name}: {}", report.stop_reason),
                 actions: report.actions,
+                notes: report.notes,
             });
             shared.release(0, 0.0);
         })
@@ -469,6 +478,7 @@ pub fn typer_shortcut(app: &AppHandle, runtime: &Arc<Runtime>) {
         runtime.state.lock().unwrap().last_macro = Some(Report {
             stop_reason: format!("typer: {error}"),
             actions: 0,
+            notes: Vec::new(),
         });
     }
 }
@@ -482,12 +492,91 @@ pub fn macro_shortcut(app: &AppHandle, runtime: &Arc<Runtime>, id: &str, name: &
     if !macros::should_run(&current, &hook::foreground_program()) {
         return;
     }
-    if let Err(error) = start_macro(runtime, &current) {
+    if let Err(error) = start_macro(runtime, app, &current) {
         runtime.state.lock().unwrap().last_macro = Some(Report {
             stop_reason: format!("{name}: {error}"),
             actions: 0,
+            notes: Vec::new(),
         });
     }
+}
+
+/// Flip one of the app's switches, whether the window asked or a block did.
+///
+/// One implementation for both, because the parts that matter are the parts
+/// that are easy to forget: saving the file, letting go of keys the remapper is
+/// holding, stopping the run that belongs to the tool being switched off, and
+/// re-registering shortcuts so a switched-off tool cannot start from a key it
+/// no longer owns.
+///
+/// `exempt` is the run that asked, if a run did. Switching a tool off does not
+/// stop the run that is doing the switching: a macro that turns macros off has
+/// said something about the next run, not about itself.
+pub fn apply_tool(
+    app: &AppHandle,
+    state: &SharedState,
+    runtime: &Arc<Runtime>,
+    tool: &str,
+    enabled: bool,
+    exempt: Option<&str>,
+) -> Result<(), String> {
+    if !matches!(tool, "clicker" | "remapper" | "macros" | "typer" | "replay") {
+        return Err(format!("there is no tool called “{tool}”"));
+    }
+    let (settings, actions) = {
+        let mut shared = state.lock().unwrap();
+        let actions = match tool {
+            "remapper" => {
+                shared.settings.hook_enabled = enabled;
+                if enabled {
+                    Vec::new()
+                } else {
+                    shared.engine.release_all()
+                }
+            }
+            "clicker" => {
+                shared.settings.clicker_enabled = enabled;
+                Vec::new()
+            }
+            "macros" => {
+                shared.settings.macros_enabled = enabled;
+                Vec::new()
+            }
+            "typer" => {
+                shared.settings.typer_enabled = enabled;
+                Vec::new()
+            }
+            _ => {
+                shared.settings.replay_enabled = enabled;
+                Vec::new()
+            }
+        };
+        crate::save(app, &shared);
+        (shared.settings.clone(), actions)
+    };
+    hook::send_public(&actions);
+
+    if !enabled {
+        let running = runtime.running();
+        let stop_it = match tool {
+            "clicker" => running.as_deref() == Some(CLICKER),
+            "typer" => running.as_deref() == Some(crate::typer::TYPER),
+            "replay" => running.as_deref() == Some(crate::replay::REPLAY),
+            // A macro in progress is nobody else's business: the named runs
+            // above are excluded so switching the macros off leaves them alone.
+            "macros" => matches!(running.as_deref(), Some(name)
+                if name != CLICKER
+                    && name != crate::typer::TYPER
+                    && name != crate::replay::REPLAY),
+            _ => false,
+        };
+        if stop_it && running.as_deref() != exempt {
+            runtime.stop();
+        }
+    }
+
+    register_shortcuts(runtime, app, &settings);
+    Ok(())
 }
 
 /// Start the clicker from whatever the settings say now.

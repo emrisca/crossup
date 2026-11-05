@@ -528,28 +528,45 @@ button.hb__row { cursor: pointer; }
 
 /* The palette holds its place at the top of the builder while the macro
    scrolls under it: a long list used to carry the block buttons off screen, so
-   adding one more meant scrolling back up first. It sits over the builder's own
+   adding one more meant scrolling back up first. It spans the builder's own
    padding so nothing shows through above it. */
 .pal {
   /* Pinned below the title row, not at the top of the scrollport: the header is
      sticky at 0 with a higher z-index, so pinning at 0 put the first rows of the
      palette behind it. `--head-h` is measured by the tab. */
   position: sticky; top: var(--head-h, 0px); z-index: 2;
-  margin: -10px -10px 0; padding: 10px 10px 8px;
+  margin: -10px -10px 0; padding: 8px 10px 8px;
+  border-bottom: 1px solid var(--edge);
   background: var(--sub); border-radius: 14px 14px 0 0;
 }
 
-.pal__row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Five tabs rather than five stacked headings: one group is on screen at a
+   time, which is the difference between two rows of blocks and two hundred
+   pixels of them. */
+.pal__tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-bottom: 7px; }
 
-.pal__item {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px;
-  border: 1px dashed var(--edge); border-radius: 9px; background: none;
-  color: var(--ink-2); font: inherit; font-size: 11.5px; cursor: grab;
+.pal__tab {
+  padding: 3px 9px; border: none; border-radius: 7px; background: none;
+  color: var(--ink-3); font: inherit; font-size: 10px; letter-spacing: 0.07em;
+  text-transform: uppercase; cursor: pointer;
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 
+.pal__tab:hover { background: var(--panel); color: var(--ink-2); }
+.pal__tab--on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-cap); }
+
+.pal__row { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.pal__item {
+  display: inline-flex; align-items: center; padding: 4px 9px;
+  border: 1px dashed var(--edge); border-radius: 8px; background: none;
+  color: var(--ink-2); font: inherit; font-size: 11px; cursor: grab;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+
+.pal__hint { display: block; margin-top: 6px; font-size: 10.5px; color: var(--ink-3); }
+
 .pal__item:hover { background: var(--panel); color: var(--ink); }
-.pal__grip { color: var(--ink-3); font-size: 10px; }
 
 .blk__list { display: flex; flex-direction: column; gap: 6px; }
 .blk__wrap { display: flex; flex-direction: column; }
