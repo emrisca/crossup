@@ -2235,3 +2235,23 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod compat_tests {
+    use super::*;
+
+    /// Settings saved before the field was renamed said "uppercase". They must
+    /// still load, or an update silently clears a persons Shift flag.
+    #[test]
+    fn old_settings_spelling_uppercase_still_load_as_shift() {
+        let settings = ClickerSettings {
+            shift: true,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&settings).expect("settings serialize");
+        assert!(json.contains("\"shift\":true"), "{json}");
+        let old = json.replace("\"shift\":true", "\"uppercase\":true");
+        let loaded: ClickerSettings = serde_json::from_str(&old).expect("old settings load");
+        assert!(loaded.shift, "Shift was dropped");
+    }
+}

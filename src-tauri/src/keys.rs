@@ -18,10 +18,10 @@ macro_rules! keys {
 }
 
 const EXTENDED_KEYS: &[KeyInfo] = &[
-    KeyInfo { scan: 0x48, label: "↑", extended: true, group: "Arrows" },
-    KeyInfo { scan: 0x50, label: "↓", extended: true, group: "Arrows" },
-    KeyInfo { scan: 0x4B, label: "←", extended: true, group: "Arrows" },
-    KeyInfo { scan: 0x4D, label: "→", extended: true, group: "Arrows" },
+    KeyInfo { scan: 0x48, label: "Up", extended: true, group: "Arrows" },
+    KeyInfo { scan: 0x50, label: "Down", extended: true, group: "Arrows" },
+    KeyInfo { scan: 0x4B, label: "Left", extended: true, group: "Arrows" },
+    KeyInfo { scan: 0x4D, label: "Right", extended: true, group: "Arrows" },
     KeyInfo { scan: 0x52, label: "Insert", extended: true, group: "Nav" },
     KeyInfo { scan: 0x53, label: "Delete", extended: true, group: "Nav" },
     KeyInfo { scan: 0x47, label: "Home", extended: true, group: "Nav" },
@@ -200,7 +200,7 @@ mod tests {
         assert_eq!(label(30), "A");
         assert_eq!(label(31), "S");
         assert_eq!(label(32), "D");
-        assert_eq!(label(0x48), "↑");
+        assert_eq!(label(0x48), "Up");
         assert!(is_extended(0x48));
         assert!(!is_extended(0x11));
     }

@@ -4382,3 +4382,20 @@ mod tests {
         assert!(error.contains("drag"), "said “{error}”");
     }
 }
+
+#[cfg(test)]
+mod compat_tests {
+    use super::*;
+
+    /// A saved macros key block said "uppercase" before the rename. The window
+    /// has to read those files rather than quietly drop Shift.
+    #[test]
+    fn an_old_key_block_spelling_uppercase_still_loads_as_shift() {
+        let old = r#"{"kind":"key","scan":30,"holdMs":80,"uppercase":true}"#;
+        let loaded: Step = serde_json::from_str(old).expect("old block loads");
+        match loaded {
+            Step::Key { shift, .. } => assert!(shift, "Shift was dropped"),
+            other => panic!("not a key block: {other:?}"),
+        }
+    }
+}

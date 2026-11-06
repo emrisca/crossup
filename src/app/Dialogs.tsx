@@ -517,7 +517,7 @@ export function MappingDialog({
             />
           </div>
           <span className="hb__arrow" aria-hidden="true" style={{ marginTop: 14 }}>
-            {mode === "REMAP" ? "→" : "⇄"}
+            {mode === "REMAP" ? "to" : "with"}
           </span>
           <div style={{ flex: 1 }}>
             <div className="appearance__label">

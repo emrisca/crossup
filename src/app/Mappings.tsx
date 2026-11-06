@@ -71,7 +71,7 @@ export function MappingTable({
               {mapping.source_label}
             </span>
             <span className="hb__arrow" aria-hidden="true">
-              {mapping.mode === "REMAP" ? "→" : "⇄"}
+              {mapping.mode === "REMAP" ? "to" : "with"}
             </span>
             <span className="kbd" title={mapping.dest_label}>
               {mapping.dest_label}
