@@ -20,7 +20,7 @@
  * become `A`/`1` because those are accepted too, everything else is passed
  * through from `KeyboardEvent.code`, whose names are the same vocabulary
  * (`ArrowUp`, `Space`, `PageUp`, `NumpadAdd`, …), and the mouse becomes
- * `Mouse1`–`Mouse5`, `WheelUp`, `WheelDown`. A combination it cannot parse comes
+ * `Mouse1`, `Mouse5`, `WheelUp`, `WheelDown`. A combination it cannot parse comes
  * back from Rust as a message on the tab rather than silence.
  */
 

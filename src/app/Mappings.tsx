@@ -123,6 +123,8 @@ export function KeyBinder({
   mouse?: boolean;
 }) {
   const [listening, setListening] = useState(false);
+  // A press that has no scan code behind it, said out loud rather than ignored.
+  const [missed, setMissed] = useState(false);
 
   useEffect(() => {
     if (!listening) return;
@@ -132,9 +134,18 @@ export function KeyBinder({
         return;
       }
       const next = scanFromCode(event.code);
-      if (next === null) return;
+      if (next === null) {
+        // Dropping the press left the cap showing the key it already held, 
+        // Left Ctrl on a new chord, which reads as the keyboard not being
+        // heard at all. The press landed, it just has nothing to bind to.
+        event.preventDefault();
+        event.stopPropagation();
+        setMissed(true);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
+      setMissed(false);
       onChange(next);
       setListening(false);
     };
@@ -171,12 +182,17 @@ export function KeyBinder({
       aria-label={label}
       className={`kbd${listening ? " kbd--listening" : ""}`}
       style={{ cursor: "pointer", minWidth: 92 }}
-      onClick={() => setListening((current) => !current)}
+      onClick={() => {
+        setListening((current) => !current);
+        setMissed(false);
+      }}
     >
       {listening
-        ? mouse
-          ? "press a key or click…"
-          : "press a key…"
+        ? missed
+          ? "that key is not one this can hold…"
+          : mouse
+            ? "press a key or click…"
+            : "press a key…"
         : scan === null
           ? "pick a key"
           : label}

@@ -7,8 +7,8 @@
  * the move and the release all happen in this document, which is also why the
  * rectangle is exact rather than inferred from two timed cursor samples.
  *
- * It only reports the drag. What the rectangle means — a zone, a click point,
- * a replacement for an existing row — is decided by the window that opened it.
+ * It only reports the drag. What the rectangle means, a zone, a click point,
+ * a replacement for an existing row, is decided by the window that opened it.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

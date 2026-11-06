@@ -244,7 +244,8 @@ pub struct ClickerSettings {
     pub key_scan: u16,
     /// Hold Shift with a letter key, for programs that read the shifted
     /// character rather than the physical key.
-    pub uppercase: bool,
+    #[serde(alias = "uppercase")]
+    pub shift: bool,
     pub rate_unit: RateUnit,
     /// Clicks per `rate_unit`, e.g. 12.5 clicks per second. With a double click
     /// set, each cycle carries two clicks at this rate.
@@ -285,7 +286,7 @@ impl Default for ClickerSettings {
             input: ClickInput::Mouse,
             button: MouseButton::Left,
             key_scan: 0x39, // Spacebar
-            uppercase: false,
+            shift: false,
             rate_unit: RateUnit::Second,
             rate: 10.0,
             duty: 0.0,
@@ -680,7 +681,7 @@ impl PointRotation {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Source {
     Mouse(MouseButton),
-    Key { scan: u16, uppercase: bool },
+    Key { scan: u16, shift: bool },
 }
 
 impl Source {
@@ -689,7 +690,7 @@ impl Source {
             ClickInput::Mouse => Source::Mouse(settings.button),
             ClickInput::Keyboard => Source::Key {
                 scan: settings.key_scan,
-                uppercase: settings.uppercase,
+                shift: settings.shift,
             },
         }
     }
@@ -697,9 +698,9 @@ impl Source {
     pub fn label(self) -> String {
         match self {
             Source::Mouse(button) => format!("{} mouse button", button.label()),
-            Source::Key { scan, uppercase } => format!(
+            Source::Key { scan, shift } => format!(
                 "{}{}",
-                if uppercase { "Shift + " } else { "" },
+                if shift { "Shift + " } else { "" },
                 crate::keys::label(scan)
             ),
         }
@@ -795,8 +796,8 @@ impl Machine for WindowsMachine {
     fn press(&mut self, source: Source) {
         match source {
             Source::Mouse(button) => input::button(button, true),
-            Source::Key { scan, uppercase } => {
-                if uppercase {
+            Source::Key { scan, shift } => {
+                if shift {
                     input::key(0x2A, true);
                 }
                 input::key(scan, true);
@@ -807,9 +808,9 @@ impl Machine for WindowsMachine {
     fn release(&mut self, source: Source) {
         match source {
             Source::Mouse(button) => input::button(button, false),
-            Source::Key { scan, uppercase } => {
+            Source::Key { scan, shift } => {
                 input::key(scan, false);
-                if uppercase {
+                if shift {
                     input::key(0x2A, false);
                 }
             }
@@ -820,12 +821,12 @@ impl Machine for WindowsMachine {
         let count = count as usize;
         match source {
             Source::Mouse(button) => input::click_batch(button, count),
-            Source::Key { scan, uppercase } => {
-                if uppercase {
+            Source::Key { scan, shift } => {
+                if shift {
                     input::key(0x2A, true);
                 }
                 input::key_batch(scan, count);
-                if uppercase {
+                if shift {
                     input::key(0x2A, false);
                 }
             }
@@ -2205,7 +2206,7 @@ mod tests {
         let keyboard = ClickerSettings {
             input: ClickInput::Keyboard,
             key_scan: 0x11,
-            uppercase: true,
+            shift: true,
             ..ClickerSettings::default()
         };
         assert_eq!(Source::of(&keyboard).label(), "Shift + W");
@@ -2217,7 +2218,7 @@ mod tests {
         machine.run(&ClickerSettings {
             input: ClickInput::Keyboard,
             key_scan: 0x11,
-            uppercase: true,
+            shift: true,
             duty: 20.0,
             ..steady(10.0)
         });
@@ -2227,7 +2228,7 @@ mod tests {
                 *source,
                 Source::Key {
                     scan: 0x11,
-                    uppercase: true
+                    shift: true
                 }
             ),
             other => panic!("the machine should have been asked to press Shift+W, saw {other:?}"),

@@ -193,7 +193,7 @@ export function TyperTab({
           <HotkeyField
             keyboardOnly
             label="Start shortcut"
-            note="Starts or stops a run. Keyboard only: a mouse button cannot type."
+
             value={draft.hotkey}
             onChange={(hotkey) => update({ hotkey })}
           />
@@ -201,8 +201,8 @@ export function TyperTab({
 
         {status?.status === "unfocused" && (
           <p className="hb__warn">
-            The window in front was not the one the run started in — or Crossup itself
-            was still in front when the countdown ended — so nothing was typed. Press
+            The window in front was not the one the run started in, or Crossup itself
+            was still in front when the countdown ended, so nothing was typed. Press
             Start, then click into the window that should receive the text.
           </p>
         )}
@@ -210,7 +210,7 @@ export function TyperTab({
         <Card
           lead
           title="Text to type"
-          note="Types into whichever window is in front. Enter and Tab are sent as keys, so paragraphs and indents come out as written."
+
         >
           <textarea
             className="hb__code hb__typer-text"
@@ -246,7 +246,7 @@ export function TyperTab({
 
         <Card
           title="How it types"
-          note="Types at a human pace. Each word gets its own speed and the run stops to think now and then. A mistyped letter is typed, noticed and fixed instead of silently corrected."
+
         >
           <div className="hb__rows">
             <Line label="Pace" note="Words a minute, at five characters to the word.">
@@ -266,7 +266,7 @@ export function TyperTab({
 
             <Line
               label="Pace fluctuation"
-              note="How far each word's speed may drift either side of the pace, and how far the gaps between keys do. Zero is a metronome. A deadline keeps the exact pace."
+
             >
               <input
                 className="hb__range"
@@ -304,7 +304,7 @@ export function TyperTab({
 
             <Line
               label="Fix it later"
-              note="Leave a mistake and come back to it after one to three sentences. The run goes back to the word, fixes the letter and carries on. The run is longer; the plan above says how much. Off, a mistake is fixed at once."
+
             >
               <Switch
                 checked={draft.typoDefer}
@@ -316,7 +316,7 @@ export function TyperTab({
 
             <Line
               label="Thinking pauses"
-              note="Whether the run stops between words at all. Each stop is random up to this length and counts towards the run's time."
+
             >
               <Switch
                 checked={draft.thinkPauses}
@@ -352,7 +352,7 @@ export function TyperTab({
 
             <Line
               label="Inside long sentences"
-              note="A stop after 15 to 30 words of a sentence that has not ended. Counted from the last pause, so the two rules do not stack."
+
             >
               <Switch
                 checked={draft.thinkInLongSentence}
@@ -364,7 +364,7 @@ export function TyperTab({
 
             <Line
               label="Finish by"
-              note="Spreads the run so the last keystroke lands on time. Overrides the pace above."
+
             >
               <Switch
                 checked={draft.deadlineSecs !== null}
@@ -385,7 +385,7 @@ export function TyperTab({
 
             <Line
               label="Countdown"
-              note="How long to wait before the first keystroke, so you can click into the window that should get the text."
+
             >
               <NumberField
                 label="Seconds before the first keystroke"
@@ -403,10 +403,7 @@ export function TyperTab({
           )}
         </Card>
 
-        <p className="hb__card-note hb__tail-note">
-          Types Unicode keystrokes, so a layout the machine is not set to still gets the
-          characters right. Nothing goes through the clipboard.
-        </p>
+        
       </section>
 
       <aside className="hb__side">
@@ -469,22 +466,7 @@ export function TyperTab({
           )}
         </Card>
 
-        <Card title="While it types" tight>
-          <p className="hb__card-note">
-            The window in front gets the text. If another window comes forward, this one
-            included, the run stops rather than typing into the wrong place.
-          </p>
-          <p className="hb__card-note">
-            One run at a time. Starting the typer while the clicker or a macro runs is
-            refused, and turning the typer off in the Tools menu stops it.
-          </p>
-          <p className="hb__card-note">
-            Escape ×3 stops the clicker; the shortcut above stops the typer. Both are read
-            between keystrokes, so a stop lands within about a frame.
-          </p>
-        </Card>
-
-        <button
+                <button
           type="button"
           className="hb__mini hb__mini--wide"
           onClick={() =>

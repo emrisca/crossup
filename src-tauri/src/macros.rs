@@ -114,6 +114,204 @@ pub enum Condition {
     Front { program: String },
 }
 
+/// Every picture a macro looks for, as the file names its blocks hold.
+///
+/// A picture is shared: several blocks in a macro can point at the same file,
+/// and the saved shelf exists to offer exactly that. Which makes "is this
+/// picture still wanted?" a question about every block in every macro —
+/// including the ones nested inside an `If`, a `While` or a `Repeat` — rather
+/// than about the block in front of you.
+pub fn pictures(steps: &[Step]) -> Vec<String> {
+    let mut found = Vec::new();
+    collect_pictures(steps, &mut found);
+    found
+}
+
+fn collect_pictures(steps: &[Step], found: &mut Vec<String>) {
+    for step in steps {
+        match step {
+            Step::WaitImage { image, .. }
+            | Step::ClickImage { image, .. }
+            | Step::AssertImage { image, .. } => found.push(image.clone()),
+            Step::If {
+                condition,
+                steps,
+                otherwise,
+            } => {
+                if let Condition::Picture { image, .. } = condition {
+                    found.push(image.clone());
+                }
+                collect_pictures(steps, found);
+                collect_pictures(otherwise, found);
+            }
+            Step::While {
+                condition, steps, ..
+            } => {
+                if let Condition::Picture { image, .. } = condition {
+                    found.push(image.clone());
+                }
+                collect_pictures(steps, found);
+            }
+            Step::Repeat { steps, .. } | Step::RepeatFor { steps, .. } => {
+                collect_pictures(steps, found)
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Where each block that looks for `image` sits, and what it is.
+///
+/// The path is the block's place in the tree — indices, with `steps` or
+/// `otherwise` where it goes inside a branch — because that is what the builder
+/// navigates by. A label alone says which macro; the path says which block in
+/// it, which is the only way a click can land on the row.
+pub fn picture_blocks(steps: &[Step], image: &str) -> Vec<(Vec<String>, String)> {
+    let mut found = Vec::new();
+    walk_pictures(steps, image, &mut Vec::new(), &mut found);
+    found
+}
+
+fn walk_pictures(
+    steps: &[Step],
+    image: &str,
+    path: &mut Vec<String>,
+    found: &mut Vec<(Vec<String>, String)>,
+) {
+    for (index, step) in steps.iter().enumerate() {
+        path.push(index.to_string());
+        match step {
+            Step::WaitImage { image: used, .. } if used == image => {
+                found.push((path.clone(), "Wait for picture".to_string()))
+            }
+            Step::ClickImage { image: used, .. } if used == image => {
+                found.push((path.clone(), "Click picture".to_string()))
+            }
+            Step::AssertImage { image: used, .. } if used == image => {
+                found.push((path.clone(), "Assert picture".to_string()))
+            }
+            Step::If {
+                condition,
+                steps,
+                otherwise,
+            } => {
+                if let Condition::Picture { image: used, .. } = condition {
+                    if used == image {
+                        found.push((path.clone(), "If — picture is on screen".to_string()));
+                    }
+                }
+                path.push("steps".to_string());
+                walk_pictures(steps, image, path, found);
+                path.pop();
+                path.push("otherwise".to_string());
+                walk_pictures(otherwise, image, path, found);
+                path.pop();
+            }
+            Step::While {
+                condition, steps, ..
+            } => {
+                if let Condition::Picture { image: used, .. } = condition {
+                    if used == image {
+                        found.push((path.clone(), "While — picture is on screen".to_string()));
+                    }
+                }
+                path.push("steps".to_string());
+                walk_pictures(steps, image, path, found);
+                path.pop();
+            }
+            Step::Repeat { steps, .. } | Step::RepeatFor { steps, .. } => {
+                path.push("steps".to_string());
+                walk_pictures(steps, image, path, found);
+                path.pop();
+            }
+            _ => {}
+        }
+        path.pop();
+    }
+}
+
+#[cfg(test)]
+mod picture_use_tests {
+    use super::*;
+
+    fn image_step(image: &str) -> Step {
+        Step::AssertImage {
+            image: image.to_string(),
+            similarity: 90,
+        }
+    }
+
+    /// The question is about the macro, not the row: a picture inside a branch
+    /// is just as much in use as one at the top of the list.
+    #[test]
+    fn pictures_inside_branches_are_found_too() {
+        let steps = vec![
+            image_step("a"),
+            Step::Repeat {
+                times: 2,
+                steps: vec![image_step("b")],
+            },
+            Step::If {
+                condition: Condition::Picture {
+                    image: "c".to_string(),
+                    similarity: 90,
+                },
+                steps: vec![image_step("d")],
+                otherwise: vec![Step::RepeatFor {
+                    seconds: 1,
+                    steps: vec![image_step("e")],
+                }],
+            },
+        ];
+        assert_eq!(pictures(&steps), vec!["a", "b", "c", "d", "e"]);
+        assert!(pictures(&[]).is_empty());
+    }
+
+    /// A refusal names the blocks, so the person is not left hunting through the
+    /// macro for the one that holds the picture.
+    #[test]
+    fn the_blocks_that_use_a_picture_are_named() {
+        let steps = vec![
+            image_step("a"),
+            Step::Repeat {
+                times: 2,
+                steps: vec![Step::WaitImage {
+                    image: "a".to_string(),
+                    timeout_ms: 0,
+                    similarity: 90,
+                }],
+            },
+            Step::If {
+                condition: Condition::Picture {
+                    image: "a".to_string(),
+                    similarity: 90,
+                },
+                steps: vec![image_step("a")],
+                otherwise: Vec::new(),
+            },
+        ];
+        let found = picture_blocks(&steps, "a");
+        let labels: Vec<&str> = found.iter().map(|(_, label)| label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "Assert picture",
+                "Wait for picture",
+                "If — picture is on screen",
+                "Assert picture"
+            ]
+        );
+        // The path is what a click lands on: a block inside a branch is reached
+        // through the branch, not by its index in its own list.
+        let paths: Vec<Vec<String>> = found.into_iter().map(|(path, _)| path).collect();
+        assert_eq!(paths[0], vec!["0"]);
+        assert_eq!(paths[1], vec!["1", "steps", "0"]);
+        assert_eq!(paths[2], vec!["2"]);
+        assert_eq!(paths[3], vec!["2", "steps", "0"]);
+        assert!(picture_blocks(&steps, "b").is_empty());
+    }
+}
+
 /// What a Focus block is looking for.
 ///
 /// Two ways, because a person describes a window one of two ways: by what it
@@ -181,8 +379,8 @@ pub enum Step {
         #[serde(default = "default_hold")]
         hold_ms: u32,
         /// Hold Shift with the key.
-        #[serde(default)]
-        uppercase: bool,
+        #[serde(default, alias = "uppercase")]
+        shift: bool,
     },
     /// Type text, one character at a time.
     Text {
@@ -484,11 +682,11 @@ impl Step {
     /// One short line naming this block, used by the log and by tests.
     pub fn summary(&self) -> String {
         match self {
-            Step::Key { scan, mode, hold_ms, uppercase } => match mode {
-                PressMode::Tap => format!("{}{}", if *uppercase { "Shift+" } else { "" }, crate::keys::label(*scan)),
+            Step::Key { scan, mode, hold_ms, shift } => match mode {
+                PressMode::Tap => format!("{}{}", if *shift { "Shift+" } else { "" }, crate::keys::label(*scan)),
                 PressMode::Hold => format!(
                     "{}{} held {hold_ms} ms",
-                    if *uppercase { "Shift+" } else { "" },
+                    if *shift { "Shift+" } else { "" },
                     crate::keys::label(*scan)
                 ),
                 PressMode::Down => format!("{} down", crate::keys::label(*scan)),
@@ -497,7 +695,7 @@ impl Step {
                 // the harmless reading if one arrives here anyway.
                 PressMode::Drag => format!(
                     "{}{}",
-                    if *uppercase { "Shift+" } else { "" },
+                    if *shift { "Shift+" } else { "" },
                     crate::keys::label(*scan)
                 ),
             },
@@ -1178,8 +1376,8 @@ fn wait_for_picture(
 
 /// Everything the interpreter needs from the operating system.
 pub trait Runner {
-    fn tap_key(&mut self, scan: u16, uppercase: bool);
-    fn key(&mut self, scan: u16, down: bool, uppercase: bool);
+    fn tap_key(&mut self, scan: u16, shift: bool);
+    fn key(&mut self, scan: u16, down: bool, shift: bool);
     /// Press or release a mouse button and leave it that way. Used by the `down`
     /// and `up` click blocks, and to let go of a held button when a run ends.
     fn button(&mut self, button: MouseButton, down: bool);
@@ -1358,8 +1556,8 @@ struct Presses {
 }
 
 impl Presses {
-    fn press_key(&mut self, scan: u16, uppercase: bool) {
-        self.keys.push((scan, uppercase));
+    fn press_key(&mut self, scan: u16, shift: bool) {
+        self.keys.push((scan, shift));
     }
 
     /// Forget a key that a block released on purpose, so the run does not
@@ -1385,8 +1583,8 @@ impl Presses {
         for button in std::mem::take(&mut self.buttons).into_iter().rev() {
             runner.button(button, false);
         }
-        for (scan, uppercase) in std::mem::take(&mut self.keys).into_iter().rev() {
-            runner.key(scan, false, uppercase);
+        for (scan, shift) in std::mem::take(&mut self.keys).into_iter().rev() {
+            runner.key(scan, false, shift);
         }
     }
 }
@@ -1446,7 +1644,7 @@ fn walk(
                 scan,
                 mode,
                 hold_ms,
-                uppercase,
+                shift,
             } => {
                 state.actions += 1;
                 // A key block can carry a mouse button instead of a key. The
@@ -1480,21 +1678,21 @@ fn walk(
                     }
                 } else {
                     match mode {
-                        PressMode::Tap | PressMode::Drag => runner.tap_key(*scan, *uppercase),
+                        PressMode::Tap | PressMode::Drag => runner.tap_key(*scan, *shift),
                         PressMode::Hold => {
-                            runner.key(*scan, true, *uppercase);
+                            runner.key(*scan, true, *shift);
                             if !runner.wait(*hold_ms, stop) {
-                                runner.key(*scan, false, *uppercase);
+                                runner.key(*scan, false, *shift);
                                 return Flow::Stopped("Stopped".to_string());
                             }
-                            runner.key(*scan, false, *uppercase);
+                            runner.key(*scan, false, *shift);
                         }
                         PressMode::Down => {
-                            runner.key(*scan, true, *uppercase);
-                            held.press_key(*scan, *uppercase);
+                            runner.key(*scan, true, *shift);
+                            held.press_key(*scan, *shift);
                         }
                         PressMode::Up => {
-                            runner.key(*scan, false, *uppercase);
+                            runner.key(*scan, false, *shift);
                             // Released on purpose, so it is not ours to clean up.
                             held.release_key(*scan);
                         }
@@ -1938,23 +2136,23 @@ impl WindowsRunner {
 }
 
 impl Runner for WindowsRunner {
-    fn tap_key(&mut self, scan: u16, uppercase: bool) {
-        if uppercase {
+    fn tap_key(&mut self, scan: u16, shift: bool) {
+        if shift {
             crate::input::key(0x2A, true);
         }
         crate::input::key(scan, true);
         crate::input::key(scan, false);
-        if uppercase {
+        if shift {
             crate::input::key(0x2A, false);
         }
     }
 
-    fn key(&mut self, scan: u16, down: bool, uppercase: bool) {
-        if down && uppercase {
+    fn key(&mut self, scan: u16, down: bool, shift: bool) {
+        if down && shift {
             crate::input::key(0x2A, true);
         }
         crate::input::key(scan, down);
-        if !down && uppercase {
+        if !down && shift {
             crate::input::key(0x2A, false);
         }
     }
@@ -2177,10 +2375,10 @@ mod group_a_tests {
     }
 
     impl Runner for Rec {
-        fn tap_key(&mut self, scan: u16, _uppercase: bool) {
+        fn tap_key(&mut self, scan: u16, _shift: bool) {
             self.seen.push(format!("tap {}", crate::keys::label(scan)));
         }
-        fn key(&mut self, scan: u16, down: bool, _uppercase: bool) {
+        fn key(&mut self, scan: u16, down: bool, _shift: bool) {
             self.seen.push(format!(
                 "{} {}",
                 if down { "down" } else { "up" },
@@ -3057,8 +3255,8 @@ mod picture_tests {
     }
 
     impl Runner for Fake {
-        fn tap_key(&mut self, _scan: u16, _uppercase: bool) {}
-        fn key(&mut self, _scan: u16, _down: bool, _uppercase: bool) {}
+        fn tap_key(&mut self, _scan: u16, _shift: bool) {}
+        fn key(&mut self, _scan: u16, _down: bool, _shift: bool) {}
         fn button(&mut self, _button: MouseButton, _down: bool) {}
         fn text(&mut self, _text: &str) {}
         fn move_to(&mut self, x: i32, y: i32, _duration_ms: u32) {
@@ -3190,7 +3388,7 @@ mod picture_tests {
             scan: 0x11,
             mode: PressMode::Tap,
             hold_ms: 0,
-            uppercase: false,
+            shift: false,
         }
     }
 
@@ -3327,19 +3525,19 @@ mod tests {
     }
 
     impl Runner for Recorder {
-        fn tap_key(&mut self, scan: u16, uppercase: bool) {
+        fn tap_key(&mut self, scan: u16, shift: bool) {
             self.note(format!(
                 "tap {}{}",
-                if uppercase { "Shift+" } else { "" },
+                if shift { "Shift+" } else { "" },
                 crate::keys::label(scan)
             ));
         }
 
-        fn key(&mut self, scan: u16, down: bool, uppercase: bool) {
+        fn key(&mut self, scan: u16, down: bool, shift: bool) {
             self.note(format!(
                 "{} {}{}",
                 if down { "down" } else { "up" },
-                if uppercase { "Shift+" } else { "" },
+                if shift { "Shift+" } else { "" },
                 crate::keys::label(scan)
             ));
         }
@@ -3484,7 +3682,7 @@ mod tests {
             scan: 0x11,
             mode: PressMode::Tap,
             hold_ms: 0,
-            uppercase: false,
+            shift: false,
         }
     }
 
@@ -3518,19 +3716,19 @@ mod tests {
                 scan: 0x11,
                 mode: PressMode::Tap,
                 hold_ms: 60,
-                uppercase: false,
+                shift: false,
             },
             Step::Key {
                 scan: 0x1E,
                 mode: PressMode::Hold,
                 hold_ms: 250,
-                uppercase: false,
+                shift: false,
             },
             Step::Key {
                 scan: 0x11,
                 mode: PressMode::Tap,
                 hold_ms: 60,
-                uppercase: true,
+                shift: true,
             },
         ]);
 
@@ -3547,20 +3745,20 @@ mod tests {
                 scan: 0x202,
                 mode: PressMode::Tap,
                 hold_ms: 40,
-                uppercase: false,
+                shift: false,
             },
             Step::Key {
                 scan: 0x202,
                 mode: PressMode::Down,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Delay { ms: 50 },
             Step::Key {
                 scan: 0x202,
                 mode: PressMode::Up,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
         ]);
 
@@ -3575,7 +3773,7 @@ mod tests {
                 scan: 0x2A,
                 mode: PressMode::Down,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Delay { ms: 50 },
             Step::Click {
@@ -3592,7 +3790,7 @@ mod tests {
                 scan: 0x2A,
                 mode: PressMode::Up,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
         ]);
 
@@ -3789,13 +3987,13 @@ mod tests {
                 scan: 0x11,
                 mode: PressMode::Down,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Key {
                 scan: 0x39,
                 mode: PressMode::Down,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Delay { ms: 10_000 },
         ];
@@ -3913,7 +4111,7 @@ mod tests {
                 scan: 0x11,
                 mode: PressMode::Hold,
                 hold_ms: 120,
-                uppercase: true,
+                shift: true,
             },
             Step::Move {
                 x: 40,
@@ -3998,7 +4196,7 @@ mod tests {
                 scan: 0,
                 mode: PressMode::Tap,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Text {
                 text: String::new(),
@@ -4019,7 +4217,7 @@ mod tests {
                 scan: 0x11,
                 mode: PressMode::Drag,
                 hold_ms: 0,
-                uppercase: false,
+                shift: false,
             },
             Step::Scroll { amount: 0 },
             Step::Repeat {
@@ -4178,7 +4376,7 @@ mod tests {
             scan: 0x11,
             mode: PressMode::Drag,
             hold_ms: 0,
-            uppercase: false,
+            shift: false,
         }];
         let error = validate(&macro_definition).expect_err("a key cannot be dragged");
         assert!(error.contains("drag"), "said “{error}”");

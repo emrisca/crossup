@@ -10,7 +10,7 @@ import { pushUndo } from "./undo";
  * selected profile on the right.
  *
  * The remapper's own switch lives in the header's Tools menu, with the other
- * four tools; the one switch left above the table asks the narrower question —
+ * four tools; the one switch left above the table asks the narrower question, 
  * whether these mappings apply to the program in front.
  */
 export function RemapperTab({

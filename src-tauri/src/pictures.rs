@@ -87,6 +87,64 @@ pub fn read(app: &AppHandle, id: &str) -> Result<Vec<u8>, String> {
         .map_err(|_| "that picture is missing from disk — pick it again".to_string())
 }
 
+/// Most pictures a gallery will offer at once.
+pub const MAX_HISTORY: usize = 24;
+
+/// The pictures already saved, newest first.
+///
+/// A macro that looks for the same thing in several blocks — wait for it, click
+/// it, loop while it is there — used to mean dragging the same rectangle out of
+/// the screen again for each block. The folder already holds every picture a
+/// block has ever pointed at, so it can be read back and chosen from instead.
+pub fn history(app: &AppHandle) -> Vec<Picture> {
+    let Ok(dir) = folder(app) else {
+        return Vec::new();
+    };
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut found: Vec<(std::time::SystemTime, Picture)> = entries
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|ending| ending.to_str()) != Some("png") {
+                return None;
+            }
+            let id = path.file_stem()?.to_str()?.to_string();
+            // A name this app could not have written is not offered back to it.
+            checked(&id).ok()?;
+            let time = entry.metadata().ok()?.modified().ok()?;
+            let (width, height) = size_of(&path)?;
+            Some((time, Picture { id, width, height }))
+        })
+        .collect();
+    // Newest first: the one just dragged out is the one most likely wanted.
+    found.sort_by(|a, b| b.0.cmp(&a.0));
+    found
+        .into_iter()
+        .map(|(_, picture)| picture)
+        .take(MAX_HISTORY)
+        .collect()
+}
+
+/// Width and height straight out of the PNG header, without decoding the image.
+fn size_of(path: &std::path::Path) -> Option<(u32, u32)> {
+    use std::io::Read;
+    let mut head = [0u8; 24];
+    let mut file = std::fs::File::open(path).ok()?;
+    file.read_exact(&mut head).ok()?;
+    size_from_header(&head)
+}
+
+fn size_from_header(head: &[u8]) -> Option<(u32, u32)> {
+    if head.len() < 24 || &head[..8] != b"\x89PNG\r\n\x1a\n" {
+        return None;
+    }
+    let width = u32::from_be_bytes(head[16..20].try_into().ok()?);
+    let height = u32::from_be_bytes(head[20..24].try_into().ok()?);
+    Some((width, height))
+}
+
 pub fn exists(app: &AppHandle, id: &str) -> bool {
     path(app, id).map(|file| file.exists()).unwrap_or(false)
 }
@@ -325,6 +383,21 @@ mod tests {
         buffer.truncate(info.buffer_size());
         assert_eq!((info.width, info.height), (4, 2));
         assert_eq!(&buffer[..], &shot.rgb[..]);
+    }
+
+    /// The gallery reads a picture's size out of its header rather than decoding
+    /// it: a folder of them has to be listed without decoding every image.
+    #[test]
+    fn a_pictures_size_comes_from_its_header() {
+        let shot = Shot {
+            width: 7,
+            height: 3,
+            rgb: vec![0; 7 * 3 * 3],
+        };
+        let png = encode(&shot).expect("the picture encodes");
+        assert_eq!(size_from_header(&png), Some((7, 3)));
+        assert_eq!(size_from_header(b"not a png at all, not even close"), None);
+        assert_eq!(size_from_header(&png[..12]), None);
     }
 
     /// A few pixels match everywhere and a whole screen is a screenshot, so both

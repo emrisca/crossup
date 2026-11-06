@@ -1,6 +1,6 @@
 [package]
 name = "crossup"
-version = "0.2.16"
+version = "0.2.17"
 description = "Key remapper and SOCD tool, rebuilt on Tauri"
 edition = "2021"
 rust-version = "1.77.2"
@@ -31,6 +31,7 @@ png = "0.17"
 # public half sits in tauri.conf.json, and this refuses anything that signature
 # does not cover.
 tauri-plugin-updater = "2"
+tauri-plugin-window-state = "2.4.1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [

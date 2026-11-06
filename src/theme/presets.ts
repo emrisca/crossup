@@ -1,7 +1,7 @@
 /**
  * Clickable presets: one hue and one chroma each.
  *
- * Mode is deliberately not part of a preset — the dark/light switch is its own
+ * Mode is deliberately not part of a preset, the dark/light switch is its own
  * control, so picking a palette never silently flips the app.
  */
 export type Preset = {

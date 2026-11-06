@@ -419,6 +419,31 @@ fn delete_macro(
     snapshot(state)
 }
 
+/// Put the macros in the order the rail shows them.
+///
+/// The list is the order, rather than a position stored on each macro: moving a
+/// row is one write instead of one per row, and a macro added afterwards still
+/// lands at the end of the list without anything having to number it.
+#[tauri::command]
+fn reorder_macros(app: AppHandle, state: State<'_, SharedState>, ids: Vec<String>) -> View {
+    {
+        let mut shared = state.lock().unwrap();
+        let mut wanted: Vec<Macro> = Vec::with_capacity(shared.settings.macros.len());
+        for id in &ids {
+            if let Some(index) = shared.settings.macros.iter().position(|entry| &entry.id == id) {
+                wanted.push(shared.settings.macros.remove(index));
+            }
+        }
+        // Anything the window did not name — a macro another window added while
+        // this drag was in flight — keeps its place at the end instead of being
+        // dropped from the settings file.
+        wanted.append(&mut shared.settings.macros);
+        shared.settings.macros = wanted;
+        save(&app, &shared);
+    }
+    snapshot(state)
+}
+
 #[tauri::command]
 fn run_macro(
     app: AppHandle,
@@ -736,6 +761,13 @@ fn save_picture(
     shot
 }
 
+/// The pictures already saved, newest first, so a block can reuse one instead
+/// of making the same drag across the screen again.
+#[tauri::command]
+fn picture_history(app: AppHandle) -> Vec<pictures::Picture> {
+    pictures::history(&app)
+}
+
 /// The picture itself, as a data URL, for the thumbnail beside its block.
 #[tauri::command]
 fn picture_preview(app: AppHandle, id: String) -> Result<String, String> {
@@ -746,6 +778,86 @@ fn picture_preview(app: AppHandle, id: String) -> Result<String, String> {
 #[tauri::command]
 fn delete_picture(app: AppHandle, id: String) -> Result<(), String> {
     pictures::remove(&app, &id)
+}
+
+/// Take a picture off the saved shelf, unless a block still looks for it.
+///
+/// The shelf is worth having because blocks share one picture, so removing a
+/// shared one would leave every other block saying the picture is missing. A
+/// picture that is still wanted is refused with the count, which is also the
+/// answer to "why can't I delete this one?" — one of the blocks in front of you
+/// is using it.
+#[tauri::command]
+fn forget_picture(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    id: String,
+) -> Result<(), String> {
+    let users = {
+        let shared = state.lock().unwrap();
+        shared
+            .settings
+            .macros
+            .iter()
+            .flat_map(|entry| macros::pictures(&entry.steps))
+            .filter(|image| image == &id)
+            .count()
+    };
+    if users > 0 {
+        return Err(format!(
+            "that picture is still used by {users} block{} — change those first",
+            if users == 1 { "" } else { "s" }
+        ));
+    }
+    pictures::remove(&app, &id)
+}
+
+/// One block that looks for a picture, by what it is and where it sits.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PictureUse {
+    label: String,
+    /// Indices into the macro's tree, with `steps` or `otherwise` at each branch.
+    path: Vec<String>,
+}
+
+/// One macro that still looks for a picture, and the blocks in it that do.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PictureUser {
+    id: String,
+    macro_name: String,
+    blocks: Vec<PictureUse>,
+}
+
+/// Which macros, and which blocks in them, still look for this picture.
+///
+/// The refusal is only useful if it says where: a picture shared by four blocks
+/// across two macros is four things to change, and the person reading it is
+/// looking at one of them.
+#[tauri::command]
+fn picture_uses(state: State<'_, SharedState>, id: String) -> Vec<PictureUser> {
+    let shared = state.lock().unwrap();
+    shared
+        .settings
+        .macros
+        .iter()
+        .filter_map(|entry| {
+            let blocks: Vec<PictureUse> = macros::picture_blocks(&entry.steps, &id)
+                .into_iter()
+                .map(|(path, label)| PictureUse { label, path })
+                .collect();
+            if blocks.is_empty() {
+                None
+            } else {
+                Some(PictureUser {
+                    id: entry.id.clone(),
+                    macro_name: entry.name.clone(),
+                    blocks,
+                })
+            }
+        })
+        .collect()
 }
 
 /// The titles of the windows a macro could focus, for the builder's list.
@@ -1148,6 +1260,68 @@ pub(crate) fn reveal(app: &AppHandle) {
     }
 }
 
+/// Which parts of the window's shape are worth keeping.
+///
+/// Everything but visibility: closing to the tray hides the window, and a saved
+/// "hidden" would make the next launch look like a launch that did nothing.
+fn saved_shape() -> tauri_plugin_window_state::StateFlags {
+    tauri_plugin_window_state::StateFlags::all()
+        & !tauri_plugin_window_state::StateFlags::VISIBLE
+}
+
+/// Write the window's shape out now.
+///
+/// The plugin writes it as the app quits, which is too late for the way Crossup
+/// usually leaves: the window has been hidden in the tray for hours by then, and
+/// that hidden window is exactly the state a restore should not have to reason
+/// about. Saving at the moment it is put away keeps the file meaning "the last
+/// shape you saw".
+fn save_shape(app: &AppHandle) {
+    use tauri_plugin_window_state::AppHandleExt;
+    let _ = app.save_window_state(saved_shape());
+}
+
+/// Put the window back where it was, and keep it reachable.
+fn restore_shape(app: &AppHandle) {
+    use tauri_plugin_window_state::WindowExt;
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    if window.restore_state(saved_shape()).is_err() {
+        return;
+    }
+    // A saved spot on a monitor that is no longer plugged in would put the
+    // window somewhere nothing can click it. The size is still worth keeping;
+    // the position is not.
+    if lost_off_screen(&window) {
+        let _ = window.center();
+    }
+}
+
+/// Whether the window's title bar would land on no screen at all.
+fn lost_off_screen(window: &tauri::WebviewWindow) -> bool {
+    let (Ok(position), Ok(size), Ok(monitors)) = (
+        window.outer_position(),
+        window.outer_size(),
+        window.available_monitors(),
+    ) else {
+        return false;
+    };
+    // An 80-point stretch of title bar is enough to grab and drag back.
+    let point = (
+        position.x + (size.width as i32 / 2).min(80),
+        position.y + 8,
+    );
+    !monitors.iter().any(|monitor| {
+        let origin = monitor.position();
+        let area = monitor.size();
+        point.0 >= origin.x
+            && point.0 < origin.x + area.width as i32
+            && point.1 >= origin.y
+            && point.1 < origin.y + area.height as i32
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1157,6 +1331,16 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             reveal(app);
         }))
+        // Where the window was and how big it was, kept beside the settings so
+        // closing the app — or updating it — is not a reason to lose the shape
+        // it was dragged to. Visibility is left out on purpose: closing to the
+        // tray hides the window, and a saved "hidden" would make the next launch
+        // look like a launch that did nothing.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(saved_shape())
+                .build(),
+        )
         // Registered before setup, because the shortcuts are taken in setup.
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Used from Rust only, to let the user point the sign-in entry at a copy
@@ -1166,6 +1350,9 @@ pub fn run() {
         // state the banner reads lives in `update`.
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            // Before anything is drawn in the window, so the first frame is
+            // already the shape it was left in.
+            restore_shape(app.handle());
             let (settings, notes, healed) = load(app.handle());
             let shared: SharedState = Arc::new(Mutex::new(Shared::new(settings.clone())));
             app.manage(shared.clone());
@@ -1217,7 +1404,10 @@ pub fn run() {
                     let runtime: State<'_, RuntimeState> = app.state();
                     runtime.stop();
                 }
-                "quit" => app.exit(0),
+                "quit" => {
+                    save_shape(app);
+                    app.exit(0);
+                }
                 _ => {}
             })
             .on_tray_icon_event(|tray, event| {
@@ -1257,8 +1447,12 @@ pub fn run() {
                     let close_to_tray = state.lock().unwrap().settings.close_to_tray;
                     if close_to_tray {
                         api.prevent_close();
+                        // From here the window cannot be moved or resized, so
+                        // this is the shape it was last seen in.
+                        save_shape(window.app_handle());
                         let _ = window.hide();
                     } else {
+                        save_shape(window.app_handle());
                         window.app_handle().exit(0);
                     }
                 }
@@ -1288,6 +1482,7 @@ pub fn run() {
             stop_activity,
             dismiss_notices,
             save_macro,
+            reorder_macros,
             delete_macro,
             run_macro,
             save_typer,
@@ -1316,8 +1511,11 @@ pub fn run() {
             pick_region,
             picker_context,
             save_picture,
+            picture_history,
             picture_preview,
             delete_picture,
+            forget_picture,
+            picture_uses,
             picker_finish,
             picker_cancel,
             update::update_state,

@@ -12,7 +12,10 @@ import {
   keyLabel,
   on,
   pickRegion,
+  forgetPicture,
+  pictureHistory,
   picturePreview,
+  pictureUses,
   savePicture,
   PICK_CANCELLED,
   REGION_PICKED,
@@ -21,6 +24,8 @@ import {
   type Macro,
   type MouseButton,
   type PickResult,
+  type Picture,
+  type PictureUser,
   type Step,
   type View,
   MACRO_PROGRAM,
@@ -139,8 +144,8 @@ function pickStep(steps: Step[], path: Path): Step | undefined {
  * Put a block into the container at `parent`, at `index` within it.
  *
  * `parent` names a container, not a block, so the empty path is the list at the
- * top of the macro, and anything longer walks into each Repeat — or each arm of
- * an If — on the way down.
+ * top of the macro, and anything longer walks into each Repeat, or each arm of
+ * an If, on the way down.
  */
 function insertStep(steps: Step[], parent: Path, index: number, step: Step): Step[] {
   return withChildren(steps, parent, (list) => {
@@ -288,6 +293,10 @@ export function MacrosTab({
   // so the answer lands on the block that asked rather than on the first one.
   const [picking, setPicking] = useState<Path | null>(null);
   const pickPath = useRef<Path | null>(null);
+  // Which macro is being dragged in the rail, and the row it would land on.
+  const [moving, setMoving] = useState<string | null>(null);
+  // Which row a drag would land on, and on which side of it.
+  const [overMacro, setOverMacro] = useState<{ id: string; after: boolean } | null>(null);
   const draftRef = useRef<Macro | null>(null);
   const sent = useRef<string>("");
   const timer = useRef<number | null>(null);
@@ -379,7 +388,7 @@ export function MacrosTab({
       }).catch(giveUp);
       return;
     }
-    if (step.kind !== "move" && step.kind !== "click") {
+    if (step.kind !== "move" && step.kind !== "click" && step.kind !== "scrollAt") {
       pickPath.current = null;
       setPicking(null);
       return;
@@ -390,7 +399,10 @@ export function MacrosTab({
       zones: [],
       // A relative block's x and y are an offset, not a place: drawing them as a
       // marker on screen would point at the wrong spot entirely.
-      points: step.relative ? [] : [{ x: step.x, y: step.y, width: 0, height: 0 }],
+      points:
+        step.kind === "scrollAt" || !step.relative
+          ? [{ x: step.x, y: step.y, width: 0, height: 0 }]
+          : [],
     }).catch(giveUp);
   }, [onError]);
 
@@ -462,11 +474,19 @@ export function MacrosTab({
       setPicking(null);
       if (!path || !macro) return;
       const step = pickStep(macro.steps, path);
-      if (!step || (step.kind !== "move" && step.kind !== "click")) return;
+      if (!step) return;
       // A dragged area places its point at the centre; a plain click already is
       // a point, with the centre and the corner being the same pixel.
       const x = Math.round(result.x + result.width / 2);
       const y = Math.round(result.y + result.height / 2);
+      if (step.kind === "scrollAt") {
+        // A scroll point is a place and nothing else, so it takes the spot and
+        // no other field: handing it the `relative` a move block carries would
+        // put a key in the settings this block does not have.
+        push({ ...macro, steps: replaceStep(macro.steps, path, { ...step, x, y }) });
+        return;
+      }
+      if (step.kind !== "move" && step.kind !== "click") return;
       push({
         ...macro,
         steps: replaceStep(macro.steps, path, { ...step, x, y, relative: false }),
@@ -483,6 +503,53 @@ export function MacrosTab({
   }, [push, onError]);
 
   const runningMacro = activity?.running && activity.running !== "clicker";
+
+  /**
+   * Open the macro a picture is used in, and put that block in view.
+   *
+   * Asked for by an event rather than a callback passed down: the shelf sits in
+   * a picture field, inside a block, inside a branch, and threading one action
+   * through five components to reach it would be most of the tree rewritten for
+   * a scroll. The row is then found by its path in the page instead of through
+   * state, one row is being pointed at, and the whole tree re-rendering to
+   * carry a spotlight to it would be a lot of renders for a moment's glow.
+   */
+  useEffect(() => {
+    const onShow = (event: Event) => {
+      const { macroId, path } = (
+        event as CustomEvent<{ macroId: string; path: string[] }>
+      ).detail;
+      setSelectedId(macroId);
+      const key = path.join(".");
+      // The macro may not be the one that was on screen: give the tree a frame
+      // to render before looking for the row inside it.
+      window.setTimeout(() => {
+        const row = document.querySelector<HTMLElement>(`[data-blk="${key}"]`);
+        if (!row) return;
+        row.scrollIntoView({ block: "center", behavior: "smooth" });
+        row.classList.add("blk--found");
+        window.setTimeout(() => row.classList.remove("blk--found"), 1600);
+      }, 80);
+    };
+    window.addEventListener(SHOW_BLOCK, onShow);
+    return () => window.removeEventListener(SHOW_BLOCK, onShow);
+  }, []);
+
+  /**
+   * Put the dragged macro before or after another one, or at the end, when
+   * there is no row to aim at, then save the order as one list.
+   */
+  const moveMacro = (from: string, target: string | null, after: boolean) => {
+    if (target === from) return;
+    const ids = view.macros.map((macro) => macro.id).filter((id) => id !== from);
+    if (!target) {
+      ids.push(from);
+    } else {
+      const at = ids.indexOf(target);
+      ids.splice(at < 0 ? ids.length : at + (after ? 1 : 0), 0, from);
+    }
+    void run("reorder_macros", { ids });
+  };
 
   const newMacro = () => {
     const id = `macro-${Date.now().toString(36)}`;
@@ -520,12 +587,55 @@ export function MacrosTab({
           )}
           {view.macros.map((entry) => {
             const live = runningMacro && activity?.running === entry.name;
+            // The whole row is the handle: there is no grip to aim at, a click
+            // still opens the macro, and a drag is what moves it.
             return (
               <button
                 key={entry.id}
                 type="button"
-                className="hb__profile"
+                className={`hb__profile${moving === entry.id ? " hb__profile--moving" : ""}${
+                  overMacro?.id === entry.id && moving !== entry.id
+                    ? overMacro.after
+                      ? " hb__profile--over-end"
+                      : " hb__profile--over"
+                    : ""
+                }`}
                 aria-current={entry.id === selected?.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", entry.id);
+                  setMoving(entry.id);
+                }}
+                onDragOver={(event) => {
+                  if (!moving || moving === entry.id) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  // Which half of the row the pointer is in decides the side:
+                  // the bottom half is the only way to say "after this one",
+                  // and so the only way to reach the end of the list at all.
+                  const box = event.currentTarget.getBoundingClientRect();
+                  setOverMacro({
+                    id: entry.id,
+                    after: event.clientY > box.top + box.height / 2,
+                  });
+                }}
+                onDragLeave={() =>
+                  setOverMacro((current) => (current?.id === entry.id ? null : current))
+                }
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const from = moving ?? event.dataTransfer.getData("text/plain");
+                  const box = event.currentTarget.getBoundingClientRect();
+                  const after = event.clientY > box.top + box.height / 2;
+                  setMoving(null);
+                  setOverMacro(null);
+                  if (from) moveMacro(from, entry.id, after);
+                }}
+                onDragEnd={() => {
+                  setMoving(null);
+                  setOverMacro(null);
+                }}
                 onClick={() => setSelectedId(entry.id)}
               >
                 <span
@@ -539,12 +649,32 @@ export function MacrosTab({
               </button>
             );
           })}
+          {/* The foot of the rail is a drop surface of its own, so a macro can
+              be moved past the last row without a row below it to aim at. */}
+          {moving && (
+            <div
+              className={`hb__nav-tail${
+                overMacro?.id === END_OF_LIST ? " hb__nav-tail--active" : ""
+              }`}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+                setOverMacro({ id: END_OF_LIST, after: true });
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                const from = moving ?? event.dataTransfer.getData("text/plain");
+                setMoving(null);
+                setOverMacro(null);
+                if (from) moveMacro(from, null, true);
+              }}
+            >
+              Move to the end
+            </div>
+          )}
         </div>
         <div className="hb__rail-foot">
-          <p className="hb__card-note hb__dim" style={{ margin: 0, padding: "0 4px" }}>
-            A macro runs from its shortcut or the Run button. One run at a time, clicker
-            or macro.
-          </p>
+          
         </div>
       </aside>
 
@@ -595,7 +725,7 @@ export function MacrosTab({
               <div className="hb__rows">
                 <Line
                   label="Shortcut"
-                  note="Runs anywhere, whether or not this window is in front."
+
                 >
                   <HotkeyField
                     label="Macro shortcut"
@@ -699,7 +829,7 @@ function NewMacroDialog({
       open={open}
       onClose={onClose}
       title="New macro"
-      description="Drag blocks in, reorder them, and drop them inside a Repeat. Nothing runs until the macro has a shortcut or you press Run."
+      description="Drag blocks in. Nothing runs until you press Run."
       maxWidth={420}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -713,14 +843,18 @@ function NewMacroDialog({
         </div>
       }
     >
-      <p className="hb__card-note" style={{ margin: 0 }}>
-        The new macro starts with one Wait block.
-      </p>
+      
     </Modal>
   );
 }
 
 // ── the builder ────────────────────────────────────────────────────
+
+/** The drop surface at the foot of the list, which no row owns. */
+const END_OF_LIST = "__end";
+
+/** Asked by a picture's shelf, answered by the tab that owns the macro tree. */
+const SHOW_BLOCK = "macro-show-block";
 
 type Drag =
   | { source: "palette"; make: () => Step }
@@ -748,6 +882,35 @@ function BlockBuilder({
   // line above it instead.
   const [paletteGroup, setPaletteGroup] = useState(0);
   const shownGroup = BLOCK_GROUPS[paletteGroup] ?? BLOCK_GROUPS[0];
+
+  /**
+   * Stop believing a drag is in flight when one ends somewhere this cannot feel
+   * it.
+   *
+   * A drag let go over the native window frame, cancelled by the system, or
+   * finished on a part of the page that is not a drop surface can end without a
+   * `dragend` ever reaching the builder. While a drag is believed to be alive
+   * every row answers the pointer with a drop, so the stale state sat over the
+   * grips and made the blocks impossible to pick up again, the symptom was
+   * "the blocks stopped dragging", some of them, at random. Whatever can end a
+   * drag clears it here.
+   */
+  useEffect(() => {
+    const forget = () => {
+      setDrag(null);
+      setDrop(null);
+    };
+    window.addEventListener("dragend", forget, true);
+    window.addEventListener("drop", forget);
+    window.addEventListener("mouseup", forget);
+    window.addEventListener("blur", forget);
+    return () => {
+      window.removeEventListener("dragend", forget, true);
+      window.removeEventListener("drop", forget);
+      window.removeEventListener("mouseup", forget);
+      window.removeEventListener("blur", forget);
+    };
+  }, []);
 
   /**
    * Scroll the panel when a drag reaches its edge.
@@ -943,7 +1106,33 @@ function BlockNode({
 
   return (
     <div className={`blk__wrap${marked ? " blk__wrap--marked" : ""}`}>
-      <div className={`blk${dragging ? " blk--dragging" : ""}`}>
+      {/* The row is its own drop surface: the third of it the pointer is over
+          decides whether the block lands before, after or inside. It is never a
+          surface for the drag that started on it, a node added under the drag
+          source while `dragstart` runs makes the webview cancel the drag on the
+          spot, and it is not a layer of its own either: a child element laid
+          over the row would sit over the grip as well, so a drag the builder
+          failed to notice would leave nothing to pick the block up by. */}
+      <div
+        className={`blk${dragging ? " blk--dragging" : ""}`}
+        data-blk={path.join(".")}
+        onDragOver={
+          drag && !dragging
+            ? (event: React.DragEvent<HTMLDivElement>) => {
+                event.preventDefault();
+                setDrop(place(event));
+              }
+            : undefined
+        }
+        onDrop={
+          drag && !dragging
+            ? (event: React.DragEvent<HTMLDivElement>) => {
+                event.preventDefault();
+                onDropTarget(place(event));
+              }
+            : undefined
+        }
+      >
         <div className="blk__body">
           <div className="blk__title-row">
             <span
@@ -994,27 +1183,6 @@ function BlockNode({
           />
         </div>
 
-        {/* The row's own drop surface: the third of it the pointer is over
-            decides whether the block lands before, after or inside.
-
-            A block is never its own drop surface. Besides doing nothing, that
-            surface would be a new element inside the block the drag started
-            from, and a node added under the drag source while `dragstart` runs
-            makes the webview drop the drag on the spot. Leaving the dragged
-            row alone is what keeps every other row reachable. */}
-        {drag && !dragging && (
-          <div
-            className="blk__drop"
-            onDragOver={(event) => {
-              event.preventDefault();
-              setDrop(place(event));
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              onDropTarget(place(event));
-            }}
-          />
-        )}
       </div>
 
       {branchAreas(step, path).map((area) => (
@@ -1139,10 +1307,10 @@ function OffsetFields({
           <SegmentedControl
             label="Direction"
             options={[
-              { value: "left", label: "← Left" },
-              { value: "right", label: "→ Right" },
-              { value: "up", label: "↑ Up" },
-              { value: "down", label: "↓ Down" },
+              { value: "left", label: "Left" },
+              { value: "right", label: "Right" },
+              { value: "up", label: "Up" },
+              { value: "down", label: "Down" },
             ]}
             value={direction}
             onValueChange={(value) => nudge(value, distance)}
@@ -1206,17 +1374,35 @@ function PointFields({
   );
 }
 
-/** The picture a block looks for, with a thumbnail once one is picked. */
+/**
+ * The picture a block looks for, with a thumbnail once one is picked.
+ *
+ * A macro that looks for the same thing in several blocks, wait for it, click
+ * it, loop while it is on screen, would otherwise mean dragging the same
+ * rectangle out again for each one. Every picture ever picked is still on disk,
+ * so the block offers them back instead: the same picture is one click rather
+ * than a second trip across the screen, and the blocks that share it keep
+ * matching each other exactly.
+ */
 function PictureField({
   image,
   picking,
   onPick,
+  onChoose,
 }: {
   image: string;
   picking: boolean;
   onPick: () => void;
+  /** Take a picture that is already saved rather than drawing a new one. */
+  onChoose: (id: string) => void;
 }) {
   const [src, setSrc] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState<Picture[] | null>(null);
+  // Why a picture could not be removed, in the shelf rather than off-screen,
+  // and where it is still used, so the refusal says what to change.
+  const [problem, setProblem] = useState<string | null>(null);
+  const [users, setUsers] = useState<PictureUser[]>([]);
 
   useEffect(() => {
     let live = true;
@@ -1236,27 +1422,152 @@ function PictureField({
     };
   }, [image]);
 
+  /** Take a picture off the shelf, unless a block still looks for it. */
+  const forget = (id: string) => {
+    setProblem(null);
+    setUsers([]);
+    forgetPicture(id)
+      .then(() => setSaved((list) => (list ?? []).filter((entry) => entry.id !== id)))
+      .catch((reason) => {
+        setProblem(String(reason));
+        // Which macros and blocks hold it: the answer to "so what do I change?".
+        pictureUses(id)
+          .then(setUsers)
+          .catch(() => undefined);
+      });
+  };
+
+  // Read the folder each time the shelf is opened: a picture picked in another
+  // block since the last look is exactly the one worth offering.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setSaved(null);
+    pictureHistory()
+      .then((list) => {
+        if (live) setSaved(list);
+      })
+      .catch(() => {
+        if (live) setSaved([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [open]);
+
   return (
-    <span
-      className="blk__picture"
-      style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
-    >
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          style={{ height: 30, maxWidth: 120, objectFit: "contain", borderRadius: 4 }}
-        />
-      ) : (
-        <span className="blk__hint">
-          {image ? "the picture is missing — pick it again" : "No picture yet"}
-        </span>
+    <>
+      <span
+        className="blk__picture"
+        style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+      >
+        {src ? (
+          <img
+            src={src}
+            alt=""
+            style={{ height: 30, maxWidth: 120, objectFit: "contain", borderRadius: 4 }}
+          />
+        ) : (
+          <span className="blk__hint">
+            {image ? "the picture is missing, pick it again" : "No picture yet"}
+          </span>
+        )}
+        <button type="button" className="hb__mini" disabled={picking} onClick={onPick}>
+          {picking ? "Waiting for the screen…" : src ? "Pick another…" : "Pick picture…"}
+        </button>
+        <button type="button" className="hb__mini" onClick={() => setOpen((was) => !was)}>
+          {open ? "Hide saved" : "Use a saved one…"}
+        </button>
+      </span>
+
+      {open && (
+        <div className="blk__gallery">
+          {saved === null ? (
+            <span className="blk__hint">Reading the pictures folder…</span>
+          ) : saved.length === 0 ? (
+            <span className="blk__hint">
+              Nothing saved yet. A picture is offered here once it has been picked.
+            </span>
+          ) : (
+            saved.map((entry) => (
+              <div className="blk__shot-wrap" key={entry.id}>
+                <button
+                  type="button"
+                  className={`blk__shot${entry.id === image ? " blk__shot--on" : ""}`}
+                  title={`${entry.width} × ${entry.height}, use this picture`}
+                  onClick={() => {
+                    onChoose(entry.id);
+                    setOpen(false);
+                  }}
+                >
+                  <Shot id={entry.id} />
+                </button>
+                <button
+                  type="button"
+                  className="blk__shot-drop"
+                  aria-label="Remove this picture from the shelf"
+                  title="Remove this picture from the shelf"
+                  onClick={() => forget(entry.id)}
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
+          {problem && (
+            <span className="blk__hint" style={{ flexBasis: "100%", color: "var(--accent)" }}>
+              {problem}
+            </span>
+          )}
+          {users.length > 0 && (
+            <ul className="blk__uses">
+              {users.map((user) => (
+                <li key={user.id}>
+                  <span className="blk__uses-macro">{user.macroName}</span>
+                  {user.blocks.map((hit) => (
+                    <button
+                      key={hit.path.join(".")}
+                      type="button"
+                      className="blk__uses-block"
+                      title="Show this block"
+                      onClick={() =>
+                        window.dispatchEvent(
+                          new CustomEvent(SHOW_BLOCK, {
+                            detail: { macroId: user.id, path: hit.path },
+                          }),
+                        )
+                      }
+                    >
+                      {hit.label}
+                    </button>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
-      <button type="button" className="hb__mini" disabled={picking} onClick={onPick}>
-        {picking ? "Waiting for the screen…" : src ? "Pick another…" : "Pick picture…"}
-      </button>
-    </span>
+    </>
   );
+}
+
+/** One thumbnail in the shelf, loaded the same way the block's own is. */
+function Shot({ id }: { id: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    picturePreview(id)
+      .then((url) => {
+        if (live) setSrc(url);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [id]);
+
+  return src ? <img src={src} alt="" /> : <span className="blk__shot-blank" />;
 }
 
 /** How alike the screen has to be for a picture to count, as a percentage. */
@@ -1389,7 +1700,7 @@ function WindowTitleField({
 /**
  * A program's path, with the system's file dialog behind a button so nobody has
  * to type one. The dialog is modal and answers long after the click, so it
- * arrives as an event — and only the field that opened it takes the answer.
+ * arrives as an event, and only the field that opened it takes the answer.
  */
 function ProgramField({
   value,
@@ -1485,7 +1796,12 @@ function ConditionFields({
       />
       {condition.kind === "picture" ? (
         <>
-          <PictureField image={condition.image} picking={picking} onPick={onPick} />
+          <PictureField
+            image={condition.image}
+            picking={picking}
+            onPick={onPick}
+            onChoose={(id) => onChange({ ...condition, image: id })}
+          />
           <SimilarityField
             value={condition.similarity}
             onChange={(similarity) => onChange({ ...condition, similarity })}
@@ -1535,7 +1851,7 @@ function BlockFields({
                 ...step,
                 scan,
                 // Shift belongs to a key: a button has no shifted case.
-                uppercase: isMouseScan(scan) ? false : step.uppercase,
+                shift: isMouseScan(scan) ? false : step.shift,
               })
             }
           />
@@ -1567,9 +1883,9 @@ function BlockFields({
             <label className="hb__check">
               <input
                 type="checkbox"
-                checked={step.uppercase}
+                checked={step.shift}
                 onChange={(event) =>
-                  onReplace({ ...step, uppercase: event.target.checked })
+                  onReplace({ ...step, shift: event.target.checked })
                 }
               />
               with Shift
@@ -1781,10 +2097,7 @@ function BlockFields({
             onPick={onPick}
             onChange={(next) => onReplace({ ...step, condition: next })}
           />
-          <span className="blk__hint">
-            Runs the blocks under Then when the check is true, and the ones under Otherwise when
-            it is not. It looks once — a block that waits is Wait for picture.
-          </span>
+          
         </div>
       );
     }
@@ -1792,7 +2105,12 @@ function BlockFields({
     case "waitImage":
       return (
         <div className="blk__fields">
-          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <PictureField
+            image={step.image}
+            picking={picking}
+            onPick={onPick}
+            onChoose={(id) => onReplace({ ...step, image: id })}
+          />
           <NumberField
             label="Wait up to"
             value={step.timeoutMs}
@@ -1803,17 +2121,19 @@ function BlockFields({
             value={step.similarity}
             onChange={(similarity) => onReplace({ ...step, similarity })}
           />
-          <span className="blk__hint">
-            Waits until the picture is on screen, then carries on. If it never turns up, the
-            run stops and says so.
-          </span>
+          
         </div>
       );
 
     case "clickImage":
       return (
         <div className="blk__fields">
-          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <PictureField
+            image={step.image}
+            picking={picking}
+            onPick={onPick}
+            onChoose={(id) => onReplace({ ...step, image: id })}
+          />
           <SegmentedControl
             label="Mouse button"
             options={[
@@ -1836,10 +2156,7 @@ function BlockFields({
             value={step.similarity}
             onChange={(similarity) => onReplace({ ...step, similarity })}
           />
-          <span className="blk__hint">
-            Clicks the middle of the picture wherever it is now, so the block survives a window
-            that moved.
-          </span>
+          
         </div>
       );
 
@@ -1909,10 +2226,7 @@ function BlockFields({
             value={step.text}
             onChange={(event) => onReplace({ ...step, text: event.target.value })}
           />
-          <span className="blk__hint">
-            A note for whoever reads the macro — including you in six months. It runs nothing
-            and counts as nothing.
-          </span>
+          
         </div>
       );
 
@@ -1926,9 +2240,7 @@ function BlockFields({
             value={step.text}
             onChange={(event) => onReplace({ ...step, text: event.target.value })}
           />
-          <span className="blk__hint">
-            Written into the run's report, so a long macro can say where it got to.
-          </span>
+          
         </div>
       );
 
@@ -1947,10 +2259,7 @@ function BlockFields({
             onValueChange={(maxMs) => onReplace({ ...step, maxMs })}
           />
           <span className="hb__field-label">ms, picked at random</span>
-          <span className="blk__hint">
-            Different every run: a pause that is never the same twice is harder to spot than a
-            fixed one.
-          </span>
+          
         </div>
       );
 
@@ -1994,10 +2303,7 @@ function BlockFields({
             onValueChange={(holdMs) => onReplace({ ...step, holdMs })}
           />
           <span className="hb__field-label">ms</span>
-          <span className="blk__hint">
-            Presses every key, holds them together, then lets go in reverse — Ctrl+Shift+S as one
-            block instead of six.
-          </span>
+          
         </div>
       );
 
@@ -2033,10 +2339,7 @@ function BlockFields({
               })
             }
           />
-          <span className="blk__hint">
-            Moves the cursor there and scrolls in one step, so the wheel never lands wherever the
-            cursor happened to be.
-          </span>
+          
         </div>
       );
 
@@ -2050,10 +2353,7 @@ function BlockFields({
             value={step.at}
             onChange={(event) => onReplace({ ...step, at: event.target.value })}
           />
-          <span className="blk__hint">
-            Not before that time: if it has already been and gone today, the block does not
-            wait. It is a gate, not an alarm.
-          </span>
+          
         </div>
       );
 
@@ -2082,9 +2382,7 @@ function BlockFields({
             value={step.reason}
             onChange={(event) => onReplace({ ...step, reason: event.target.value })}
           />
-          <span className="blk__hint">
-            Ends the run here and keeps the reason in the report. The blocks after it do not run.
-          </span>
+          
         </div>
       );
 
@@ -2098,25 +2396,24 @@ function BlockFields({
             value={step.message}
             onChange={(event) => onReplace({ ...step, message: event.target.value })}
           />
-          <span className="blk__hint">
-            Ends the run as a failure. The difference from Stop is the word “Failed” in the
-            report, which is what makes a long run readable afterwards.
-          </span>
+          
         </div>
       );
 
     case "assertImage":
       return (
         <div className="blk__fields">
-          <PictureField image={step.image} picking={picking} onPick={onPick} />
+          <PictureField
+            image={step.image}
+            picking={picking}
+            onPick={onPick}
+            onChoose={(id) => onReplace({ ...step, image: id })}
+          />
           <SimilarityField
             value={step.similarity}
             onChange={(similarity) => onReplace({ ...step, similarity })}
           />
-          <span className="blk__hint">
-            Looks once and stops the run if the picture is not there: Wait for picture without the
-            waiting.
-          </span>
+          
         </div>
       );
 
@@ -2184,10 +2481,7 @@ function BlockFields({
             onValueChange={(timeoutMs) => onReplace({ ...step, timeoutMs })}
           />
           <span className="hb__field-label">ms for a window to turn up</span>
-          <span className="blk__hint">
-            Brings the window to the front and gives it the keyboard. 0 ms looks once; enough
-            milliseconds waits for a program that is still starting.
-          </span>
+          
         </div>
       );
     }
@@ -2226,11 +2520,7 @@ function BlockFields({
               <span className="hb__field-label">ms</span>
             </>
           )}
-          <span className="blk__hint">
-            Arguments are passed exactly as written: there is no shell here to expand anything.
-            Waiting needs the program to have a window of its own — a launcher that hands off
-            will time out.
-          </span>
+          
         </div>
       );
 
@@ -2244,9 +2534,7 @@ function BlockFields({
             value={step.text}
             onChange={(event) => onReplace({ ...step, text: event.target.value })}
           />
-          <span className="blk__hint">
-            Replaces what is on the clipboard. The next block can paste it with a chord.
-          </span>
+          
         </div>
       );
 
@@ -2284,10 +2572,7 @@ function BlockFields({
             value={step.height}
             onValueChange={(height) => onReplace({ ...step, height })}
           />
-          <span className="blk__hint">
-            Saved as a PNG in the screenshots folder beside the settings, named for this block
-            and the moment it was taken.
-          </span>
+          
         </div>
       );
 
@@ -2299,10 +2584,7 @@ function BlockFields({
             value={step.id}
             onChange={({ id, name }) => onReplace({ ...step, id, name })}
           />
-          <span className="blk__hint">
-            Runs that macro's blocks here, under this run: a Stop or a Fail inside it ends this
-            run too. A macro that ends up calling itself is refused, and nesting stops at eight.
-          </span>
+          
         </div>
       );
 
@@ -2330,10 +2612,7 @@ function BlockFields({
             }
           />
           <span className="hb__field-label">× as recorded, or 0 for the replayer's own</span>
-          <span className="blk__hint">
-            Plays the recording inline, with the badge up while it runs. It is a lot of input: the
-            rest of the macro carries on when the last pass ends.
-          </span>
+          
         </div>
       );
 
@@ -2363,10 +2642,7 @@ function BlockFields({
             value={step.enabled ? "on" : "off"}
             onValueChange={(value) => onReplace({ ...step, enabled: value === "on" })}
           />
-          <span className="blk__hint">
-            Flips the switch and nothing else: switching the clicker on arms it for its shortcut,
-            it does not start clicking. Switching a tool off stops that tool's own run.
-          </span>
+          
         </div>
       );
 
@@ -2395,11 +2671,7 @@ function BlockFields({
             }
           />
           <span className="hb__field-label">seconds</span>
-          <span className="blk__hint">
-            Looks at the check before each pass and stops when it is false. If neither limit is
-            reached first, the run stops loudly and says the check never went false — a loop is
-            never allowed to hang.
-          </span>
+          
         </div>
       );
 

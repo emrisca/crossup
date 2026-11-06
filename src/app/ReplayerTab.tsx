@@ -181,12 +181,12 @@ export function ReplayerTab({
 
         <Card
           title="Shortcuts"
-          note="Press a shortcut to start and again to stop. Shortcuts are never written into a recording, so a run that ends on the chord replays as recorded."
+
         >
           <div className="hb__rows">
             <Line
               label="Record"
-              note="Starts a recording and hides the window. Press it again to stop and bring Crossup back."
+
             >
               <HotkeyField
                 label="Record shortcut"
@@ -203,7 +203,7 @@ export function ReplayerTab({
             </Line>
             <Line
               label="Repeat"
-              note="Forever replays until the replay shortcut stops it. Times replays the number you set."
+
             >
               <SegmentedControl
                 label="Replays"
@@ -229,7 +229,7 @@ export function ReplayerTab({
             </Line>
             <Line
               label="Speed"
-              note="How fast the recording plays back. Below 1 is slower, above 1 is faster."
+
             >
               <input
                 className="hb__range"
@@ -292,7 +292,7 @@ export function ReplayerTab({
         <Card
           lead
           title="Recordings"
-          note="Recordings are kept in settings.json, so copying that file moves them to another machine."
+
         >
           <div className="hb__recordings">
             {options.recordings.length === 0 && (
@@ -375,27 +375,7 @@ export function ReplayerTab({
           </p>
         </Card>
 
-        <Card title="While it runs" tight>
-          <p className="hb__card-note">
-            Recording hides this window so you can reach the program underneath, and so the
-            window is not in the recording.
-          </p>
-          <p className="hb__card-note">
-            The shortcut that ends a recording is never written into it, so a recording
-            that ends on the chord does not replay its own stop.
-          </p>
-          <p className="hb__card-note">
-            One run at a time: a replay shares the slot with the clicker, typer and macros,
-            so starting it mid-run is refused rather than fighting over the cursor.
-          </p>
-          <p className="hb__card-note">
-            A replay presses what was recorded, at the recorded pace or the speed set
-            above, so a recording made against one window clicks whatever is in that spot
-            now.
-          </p>
-        </Card>
-
-      </aside>
+              </aside>
     </div>
   );
 }

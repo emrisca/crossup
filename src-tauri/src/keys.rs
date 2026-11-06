@@ -36,6 +36,16 @@ const EXTENDED_KEYS: &[KeyInfo] = &[
     // selected at all.
     KeyInfo { scan: EXTENDED_BIT | 0x1D, label: "Right Ctrl", extended: true, group: "Modifiers" },
     KeyInfo { scan: EXTENDED_BIT | 0x38, label: "Right Alt", extended: true, group: "Modifiers" },
+    // The rest of the keys the hook can report with the flag set, each with a
+    // row of its own so a press can be picked and read back by name instead of
+    // arriving as a bare scan number — or, in the chord block, not arriving at
+    // all because nothing in the UI named it.
+    KeyInfo { scan: EXTENDED_BIT | 0x1C, label: "Numpad Enter", extended: true, group: "Numpad" },
+    KeyInfo { scan: EXTENDED_BIT | 0x35, label: "Numpad /", extended: true, group: "Numpad" },
+    KeyInfo { scan: EXTENDED_BIT | 0x37, label: "Print Screen", extended: true, group: "Nav" },
+    KeyInfo { scan: EXTENDED_BIT | 0x5B, label: "Left Windows", extended: true, group: "Modifiers" },
+    KeyInfo { scan: EXTENDED_BIT | 0x5C, label: "Right Windows", extended: true, group: "Modifiers" },
+    KeyInfo { scan: EXTENDED_BIT | 0x5D, label: "Menu", extended: true, group: "Nav" },
 ];
 
 /// Marks an extended key in a scan value the UI sees.
@@ -56,9 +66,10 @@ pub fn split(scan: u16) -> (u16, bool) {
 
 /// Turn what the hook reports into the value the tables are keyed by.
 pub fn normalize(scan: u16, extended: bool) -> u16 {
-    // Only the codes that appear in both tables; an arrow is left alone so a
-    // saved mapping still matches.
-    if extended && matches!(scan, 0x1D | 0x38) {
+    // The codes that have an extended row of their own, so what the picker stores
+    // is what the hook later matches. An arrow is left alone so a saved mapping
+    // still matches.
+    if extended && matches!(scan, 0x1D | 0x38 | 0x1C | 0x35 | 0x37 | 0x5B | 0x5C | 0x5D) {
         scan | EXTENDED_BIT
     } else {
         scan
@@ -140,6 +151,14 @@ const MAIN_KEYS: &[KeyInfo] = keys![
     (0x4E, "Numpad +", "Numpad"),
     (0x57, "F11", "Function"),
     (0x58, "F12", "Function"),
+    // The ISO keyboard's extra key beside the left Shift, and the numpad keys
+    // that had no name: without them a press was reported as `Scan 86` and a
+    // chord could not be built from it at all.
+    (0x56, "ISO \\", "Letters"),
+    (0x59, "Numpad =", "Numpad"),
+    (0x73, "Intl Ro", "Letters"),
+    (0x7D, "Intl Yen", "Letters"),
+    (0x7E, "Numpad ,", "Numpad"),
 ];
 
 /// Every key the UI knows, arrows first so they are easy to find.
@@ -208,6 +227,24 @@ mod tests {
         assert_eq!(label(0x11D), "Right Ctrl");
         assert_eq!(label(0x38), "Left Alt");
         assert_eq!(label(0x138), "Right Alt");
+    }
+
+    /// Every key the picker can offer has to come back the same way from the
+    /// hook: the extended bit it stores is the one `split` sends.
+    #[test]
+    fn the_extra_keys_split_and_normalize_like_the_picker_stores_them() {
+        assert_eq!(label(EXTENDED_BIT | 0x1C), "Numpad Enter");
+        assert_eq!(label(EXTENDED_BIT | 0x5B), "Left Windows");
+        assert_eq!(label(EXTENDED_BIT | 0x37), "Print Screen");
+        assert_eq!(label(0x56), "ISO \\");
+        assert_eq!(split(EXTENDED_BIT | 0x1C), (0x1C, true));
+        assert_eq!(split(EXTENDED_BIT | 0x35), (0x35, true));
+        assert_eq!(split(EXTENDED_BIT | 0x37), (0x37, true));
+        assert_eq!(split(0x56), (0x56, false));
+        assert_eq!(normalize(0x1C, true), EXTENDED_BIT | 0x1C);
+        assert_eq!(normalize(0x5B, true), EXTENDED_BIT | 0x5B);
+        assert_eq!(normalize(0x1C, false), 0x1C);
+        assert_eq!(normalize(0x56, true), 0x56);
     }
 
     #[test]

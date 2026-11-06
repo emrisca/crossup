@@ -14,7 +14,7 @@
 .hb__mark {
   display: grid; place-items: center; width: 24px; height: 24px; flex: none;
   border-radius: 7px; box-shadow: var(--shadow-cap); color: var(--panel);
-  background: linear-gradient(135deg, var(--accent), color-mix(in oklab, var(--accent) 40%, var(--ink)));
+  background: var(--accent);
 }
 
 .hb__brand-name { font-size: 13px; font-weight: 650; letter-spacing: -0.015em; color: var(--ink); }
@@ -25,8 +25,7 @@
 }
 
 .hb__rail-label {
-  padding: 8px 10px 6px; font-size: 9.5px; font-weight: 600;
-  letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-3);
+  padding: 8px 10px 6px; font-size: 10px; font-weight: 600; color: var(--ink-3);
 }
 
 .hb__nav { flex: 1; overflow-y: auto; padding: 0 8px; overscroll-behavior: contain; }
@@ -38,6 +37,25 @@
 }
 
 .hb__profile:hover { background: var(--sub); color: var(--ink); }
+
+/* A macro row is its own drag handle: the whole row lifts, so there is nothing
+   to aim at besides the row, and the row it would land on says so with a line. */
+.hb__profile--moving { opacity: 0.45; }
+.hb__profile--over { box-shadow: inset 0 2px 0 var(--accent); }
+.hb__profile--over-end { box-shadow: inset 0 -2px 0 var(--accent); }
+
+/* The foot of the rail: a place to drop a macro when there is no row left
+   below the one it is being dragged from. */
+.hb__nav-tail {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 28px; margin: 6px 0 2px; padding: 6px;
+  border: 1px dashed var(--edge); border-radius: 8px;
+  font-size: 10.5px; color: var(--ink-3);
+}
+
+.hb__nav-tail--active {
+  border-color: var(--accent); background: var(--accent-soft); color: var(--accent);
+}
 
 .hb__profile[aria-current="true"] {
   background: var(--well); box-shadow: var(--shadow-row); color: var(--ink);
@@ -125,8 +143,7 @@
 }
 
 .hb__thead {
-  border-bottom: 1px solid var(--hairline); font-size: 9.5px; font-weight: 600;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3);
+  border-bottom: 1px solid var(--hairline); font-size: 10px; font-weight: 600; color: var(--ink-3);
 }
 
 .hb__trow { border-top: 1px solid var(--hairline); transition: background-color 0.12s ease; }
@@ -275,31 +292,18 @@ button.hb__row { cursor: pointer; }
 }
 
 /* The header's Tools menu: the five switches in one place. The trigger is a pill
-   so it sits with the status pills, and the menu hangs under it — right-aligned,
+   so it sits with the status pills, and the menu hangs under it, right-aligned,
    because it opens from the right end of the header. */
-.hb__tools { position: relative; flex: none; }
-
 .hb__tools-trigger {
   border: 0; font: inherit; font-size: 11px; font-weight: 550;
   color: var(--ink-2); cursor: pointer; transition: color 0.14s ease;
 }
 .hb__tools-trigger:hover { color: var(--ink); }
-.hb__tools-trigger--open {
-  color: var(--ink);
-  box-shadow: inset 0 0 0 1px var(--accent), var(--shadow-row);
-}
 
+/* The list inside the popover panel, which brings its own surface, shadow and
+   placement. Flat here, and wide enough for the longest tool note. */
 .hb__tools-menu {
-  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
   display: flex; width: 292px; flex-direction: column; gap: 2px;
-  padding: 6px; border: 1px solid var(--hairline); border-radius: 12px;
-  background: var(--panel); box-shadow: var(--shadow-float);
-  animation: hb-menu-in 0.13s cubic-bezier(0.23, 1, 0.32, 1);
-}
-
-@keyframes hb-menu-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: none; }
 }
 
 .hb__tool-row {
@@ -416,7 +420,7 @@ button.hb__row { cursor: pointer; }
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 15px; font-weight: 600; color: var(--ink);
 }
-.hb__stat-label { font-size: 9.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.hb__stat-label { font-size: 10px; font-weight: 600; color: var(--ink-3); }
 
 .hb__points { display: flex; flex-direction: column; gap: 5px; margin: 6px 0; }
 .hb__point { display: flex; align-items: center; gap: 5px; }
@@ -547,8 +551,7 @@ button.hb__row { cursor: pointer; }
 
 .pal__tab {
   padding: 3px 9px; border: none; border-radius: 7px; background: none;
-  color: var(--ink-3); font: inherit; font-size: 10px; letter-spacing: 0.07em;
-  text-transform: uppercase; cursor: pointer;
+  color: var(--ink-3); font: inherit; font-size: 10px; cursor: pointer;
   transition: background-color 0.14s ease, color 0.14s ease;
 }
 
@@ -599,6 +602,59 @@ button.hb__row { cursor: pointer; }
 
 .blk__fields { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 9px; }
 
+/* The pictures already picked, so a block that looks for the same thing twice is
+   a choice rather than a second drag across the screen. */
+.blk__gallery {
+  flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 6px; border-radius: 9px; background: var(--sub);
+}
+
+.blk__shot {
+  padding: 3px; border: 1px solid var(--hairline); border-radius: 6px;
+  background: var(--panel); cursor: pointer; line-height: 0;
+}
+
+.blk__shot:hover { border-color: var(--accent); }
+.blk__shot--on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.blk__shot img { height: 34px; max-width: 74px; object-fit: contain; border-radius: 3px; }
+.blk__shot-blank { display: block; width: 74px; height: 34px; }
+
+.blk__shot-wrap { position: relative; display: inline-flex; }
+
+/* Removing a picture is a corner of the thumbnail rather than a second button:
+   choosing one is the common act, and the shelf stays a shelf. */
+.blk__shot-drop {
+  position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  border: none; border-radius: 50%; background: var(--panel); color: var(--ink-3);
+  box-shadow: var(--shadow-cap); font-size: 11px; line-height: 1; cursor: pointer;
+}
+
+.blk__shot-drop:hover { background: var(--accent); color: var(--panel); }
+
+/* Where a picture that cannot be removed is still used: one line per macro, the
+   blocks named under it. */
+.blk__uses {
+  flex-basis: 100%; display: flex; flex-direction: column; gap: 2px;
+  margin: 0; padding: 0; list-style: none; font-size: 10.5px;
+}
+
+.blk__uses-macro { color: var(--ink-2); font-weight: 600; margin-right: 6px; }
+
+.blk__uses-block {
+  margin-right: 6px; padding: 0; border: none; background: none;
+  color: var(--ink-3); font: inherit; font-size: 10.5px; cursor: pointer;
+  text-decoration: underline; text-decoration-style: dotted;
+}
+
+.blk__uses-block:hover { color: var(--accent); }
+
+/* The block a jump landed on, lit for a moment so the eye can find it. */
+.blk--found {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-cap);
+  transition: box-shadow 0.2s ease;
+}
+
 .blk__children {
   display: flex; flex-direction: column; gap: 6px;
   margin: 6px 0 0 10px; padding-left: 10px;
@@ -612,15 +668,12 @@ button.hb__row { cursor: pointer; }
 .blk__tail {
   display: none; margin-top: 6px; padding: 8px 10px;
   border: 1px dashed var(--edge); border-radius: 9px; text-align: center;
-  font-size: 10px; font-weight: 550; letter-spacing: 0.07em; text-transform: uppercase;
-  color: var(--ink-3);
+  font-size: 10px; font-weight: 550; color: var(--ink-3);
 }
 
 .hb__builder[data-dragging] .blk__tail { display: block; }
 .blk__tail--active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .blk__tail--empty { padding: 10px; }
-
-.blk__drop { position: absolute; inset: 0; border-radius: 11px; }
 
 /* The remapper's rail used to lean on `mat-panel`; inside the tab strip it is
    one card among several, so it takes the same surface as the others. */
@@ -647,7 +700,7 @@ button.hb__row { cursor: pointer; }
 
 .hb__meter i {
   display: block; height: 100%; border-radius: 999px; background: var(--accent);
-  transition: width 0.18s linear;
+  
 }
 
 /* ── the replayer ─────────────────────────────────────────────── */
@@ -737,7 +790,7 @@ button.hb__row { cursor: pointer; }
 .hb__title { font-size: 21px; letter-spacing: -0.03em; }
 .hb__sub { margin-top: 6px; }
 
-/* The mark is a flat accent square: a gradient on 24px of colour reads as a
+/* The mark is a flat accent square: a wash of colour on 24px reads as a
    sticker, and the palette already carries the interest. */
 .hb__mark { background: var(--accent); }
 
@@ -797,12 +850,12 @@ button.hb__row { cursor: pointer; }
   background: var(--panel);
 }
 
-/* The fade lives under the header, not in it: a gradient behind the title let
-   the row sliding past show through the subtitle. */
+/* A solid band under the header rather than a fade: it does the same job of
+   hiding the row sliding past, without a wash of colour under the title. */
 .hb__head::after {
   content: ""; position: absolute; left: 0; right: 0; top: 100%;
   height: 12px; pointer-events: none;
-  background: linear-gradient(to bottom, var(--panel), transparent);
+  background: var(--panel);
 }
 
 /* The undo bar floats over the page: a delete never moves the layout while the
@@ -837,8 +890,8 @@ button.hb__row { cursor: pointer; }
   .hb__undo { animation: none; }
 }
 
-/* The boot frame: the window it is about to become, in flat blocks. No shimmer,
-   because a skeleton that animates is a second thing to wait for. */
+/* The boot frame: the window it is about to become, in flat blocks. No pulse
+   across it, because a skeleton that animates is a second thing to wait for. */
 .hb__sk,
 .hb__sk-top,
 .hb__sk-rail,
@@ -895,8 +948,6 @@ button.hb__row { cursor: pointer; }
 .hb__card-title {
   font-size: var(--text-label);
   font-weight: 620;
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
   color: var(--ink-3);
 }
 

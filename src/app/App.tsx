@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Settings, SlidersHorizontal } from "lucide-react";
 import { PressDepth } from "@/components/interior/press-depth";
+import { Popover } from "@/components/interior/popover";
 import { Tabs } from "@/components/interior/tabs";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 import {
@@ -36,6 +37,25 @@ const TOOLS = [
   { value: "replay", label: "Replayer", note: "Off stops recording and replay." },
 ];
 
+/** The tab the window was last left on, kept beside the palette. */
+const LAST_TAB = "crossup.lastTab";
+
+/**
+ * The tab to open on: the one last used, if it is still a tool.
+ *
+ * A tab that was removed from the strip, or a value written by something else,
+ * falls back to the first tool rather than opening on nothing.
+ */
+function readTab(): string {
+  try {
+    const saved = localStorage.getItem(LAST_TAB);
+    if (saved && TOOLS.some((tool) => tool.value === saved)) return saved;
+  } catch {
+    // A webview with storage turned off starts on the first tool.
+  }
+  return TOOLS[0].value;
+}
+
 /**
  * The mark beside a tab's name: the tool's own switch, read without opening the
  * tab. A green dot is a tool that is on, a red one is a tool that is off, so the
@@ -48,9 +68,13 @@ function ToolMark({ on }: { on: boolean }) {
 
 /**
  * The five tool switches, in one place in the header instead of each tab growing
- * its own. Flipping a switch leaves the menu open — choosing two tools in a row
- * should not mean opening the menu twice — so the trigger is the way it closes,
- * with Escape as the keyboard's exit.
+ * its own. The menu surface is the interior popover: it anchors itself to the
+ * trigger, closes on an outside press, gives Escape back to the trigger and puts
+ * focus in the panel. This used to do that by hand, and only partly: no outside
+ * press, no focus, and a menu that could sit off the window edge.
+ *
+ * Flipping a switch leaves the menu open, because choosing two tools in a row
+ * should not mean opening the menu twice.
  */
 function ToolMenu({
   tools,
@@ -60,57 +84,41 @@ function ToolMenu({
   onToggle: (tool: string, enabled: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      event.preventDefault();
-      setOpen(false);
-      trigger.current?.focus();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
 
   return (
-    <div className="hb__tools">
-      <button
-        ref={trigger}
-        type="button"
-        className={`hb__pill hb__tools-trigger${open ? " hb__tools-trigger--open" : ""}`}
-        aria-expanded={open}
-        aria-controls="hb-tools-menu"
-        title="Switch tools on and off"
-        onClick={() => setOpen((current) => !current)}
-      >
-        <SlidersHorizontal size={12} strokeWidth={1.8} aria-hidden="true" />
-        Tools
-      </button>
-
-      {open && (
-        <div className="hb__tools-menu" id="hb-tools-menu" role="group" aria-label="Tools">
-          {tools.map((tool) => (
-            <button
-              key={tool.value}
-              type="button"
-              role="switch"
-              aria-checked={tool.on}
-              className="hb__tool-row"
-              onClick={() => onToggle(tool.value, !tool.on)}
-            >
-              <ToolMark on={tool.on} />
-              <span className="hb__row-text">
-                <span className="hb__row-name">{tool.label}</span>
-                <span className="hb__row-note">{tool.note}</span>
-              </span>
-              <span className="hb__switch" aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Popover
+      label="Tools"
+      open={open}
+      onOpenChange={setOpen}
+      align="end"
+      triggerClassName="hb__pill hb__tools-trigger"
+      trigger={
+        <>
+          <SlidersHorizontal size={12} strokeWidth={1.8} aria-hidden="true" />
+          Tools
+        </>
+      }
+    >
+      <div className="hb__tools-menu" role="group" aria-label="Tools">
+        {tools.map((tool) => (
+          <button
+            key={tool.value}
+            type="button"
+            role="switch"
+            aria-checked={tool.on}
+            className="hb__tool-row"
+            onClick={() => onToggle(tool.value, !tool.on)}
+          >
+            <ToolMark on={tool.on} />
+            <span className="hb__row-text">
+              <span className="hb__row-name">{tool.label}</span>
+              <span className="hb__row-note">{tool.note}</span>
+            </span>
+            <span className="hb__switch" aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </Popover>
   );
 }
 
@@ -126,7 +134,17 @@ function Shell() {
   const { palette } = useTheme();
   const [view, setView] = useState<View | null>(null);
   const [activity, setActivity] = useState<Activity | null>(null);
-  const [tab, setTab] = useState("remapper");
+  const [tab, setTab] = useState(readTab);
+  // Written on every change rather than on exit: the window is closed to the tray
+  // far more often than the process ends, and a tab read at exit would be the one
+  // from whenever that last happened.
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_TAB, tab);
+    } catch {
+      // Storage off: the tab works, it just is not remembered.
+    }
+  }, [tab]);
   const [selected, setSelected] = useState("global");
   const [error, setError] = useState<string | null>(null);
 
@@ -286,7 +304,7 @@ function Shell() {
     !view.replay_enabled && "replayer",
   ].filter((name): name is string => Boolean(name));
   // The same switches, in the order the strip draws them. A tool that is off is
-  // still a tab you can open — the mark is a status, not a lock.
+  // still a tab you can open: the mark is a status, not a lock.
   const toolOn: Record<string, boolean> = {
     remapper: view.hook_enabled,
     clicker: view.clicker_enabled,

@@ -313,7 +313,7 @@ export function AutoClickerTab({
           )}
           <HotkeyField
             label="Start shortcut"
-            note="Press a key combination, a mouse button or a wheel notch. Side buttons are Mouse4 and Mouse5; wheel notches are WheelUp and WheelDown."
+
             value={draft.hotkey}
             onChange={(hotkey) => update({ hotkey })}
           />
@@ -337,7 +337,7 @@ export function AutoClickerTab({
 
         <Card
           title="What it presses"
-          note="Sends hardware scan codes, so a game that reads input directly still sees the key."
+
         >
           <SegmentedControl
             label="Input"
@@ -380,12 +380,12 @@ export function AutoClickerTab({
                 </Line>
                 <Line
                   label="Hold Shift"
-                  note="Turn on for programs that read the shifted character, such as a text box."
+
                 >
                   <Switch
-                    checked={draft.uppercase}
+                    checked={draft.shift}
                     label="Hold shift"
-                    onChange={(checked) => update({ uppercase: checked })}
+                    onChange={(checked) => update({ shift: checked })}
                   />
                 </Line>
               </>
@@ -396,7 +396,7 @@ export function AutoClickerTab({
         <Card
           lead
           title="How often"
-          note="The rate is timed against a clock, so a slow moment does not slow the rest of the run."
+
         >
           <div className="hb__rows">
             <Line label="Rate">
@@ -501,11 +501,7 @@ export function AutoClickerTab({
           </div>
         </Card>
 
-        <p className="hb__card-note hb__tail-note">
-          Windows wakes a timer no faster than 1 ms. A run asks for a 1 ms timer and
-          releases it when it stops. If Windows refuses, the panel on the right says so
-          and a high rate comes out lower.
-        </p>
+        
       </section>
 
       <aside className="hb__side">
@@ -540,10 +536,7 @@ export function AutoClickerTab({
         </Card>
 
         <Card title="Where it clicks" tight>
-          <p className="hb__card-note">
-            With no points the clicker clicks wherever the cursor is. With points it moves
-            to each in turn and clicks it as many times as you set.
-          </p>
+          
           <div className="hb__points">
             {draft.points.length === 0 && (
               <p className="hb__card-note hb__dim">Clicking in place.</p>
@@ -633,7 +626,7 @@ export function AutoClickerTab({
         <Card title="When to stop" tight>
           <Line
             label="Escape ×3"
-            note="Three quick taps of Escape stop the run, wherever the cursor is. Stays on because it works even while the button is held."
+
           >
             <span className="hb__field-label">always on</span>
           </Line>
@@ -683,10 +676,7 @@ export function AutoClickerTab({
                   },
                 ]}
               />
-              <p className="hb__card-note hb__dim" style={{ margin: "0 0 4px" }}>
-                Each side keeps its own distance, because the bottom of a screen often sits
-                under a taskbar. Switch a side off to leave it unwatched.
-              </p>
+              
             </>
           )}
 
@@ -739,7 +729,7 @@ export function AutoClickerTab({
 
           <Line
             label="Only in these programs"
-            note="Pauses while another window is in front, and carries on when this one comes back."
+
           >
             <Switch
               checked={draft.targets.enabled}
@@ -819,12 +809,12 @@ export function AutoClickerTab({
 
         <Card
           title="Zones"
-          note="Drag a rectangle on the desktop. The run stops, pauses or resumes when the cursor enters it."
+
           tight
         >
           <Line
             label="Watch zones"
-            note="The cursor is read every cycle, so zones only work while this is on."
+
           >
             <Switch
               checked={draft.zonesEnabled}
@@ -940,10 +930,7 @@ export function AutoClickerTab({
                   </button>
                 )}
               </div>
-              <p className="hb__card-note hb__dim" style={{ margin: "8px 0 0" }}>
-                A stop zone wins wherever it sits in the list. A carry-on zone overrides a
-                pause zone inside it.
-              </p>
+              
             </>
           )}
         </Card>

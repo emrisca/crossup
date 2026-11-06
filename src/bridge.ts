@@ -79,7 +79,7 @@ export type ClickerSettings = {
   input: ClickInput;
   button: MouseButton;
   keyScan: number;
-  uppercase: boolean;
+  shift: boolean;
   rateUnit: RateUnit;
   rate: number;
   duty: number;
@@ -104,7 +104,7 @@ export const DEFAULT_CLICKER: ClickerSettings = {
   input: "mouse",
   button: "left",
   keyScan: 0x39,
-  uppercase: false,
+  shift: false,
   rateUnit: "second",
   rate: 10,
   duty: 0,
@@ -182,7 +182,7 @@ export type Condition =
   | { kind: "front"; program: string };
 
 export type Step =
-  | { kind: "key"; scan: number; mode: PressMode; holdMs: number; uppercase: boolean }
+  | { kind: "key"; scan: number; mode: PressMode; holdMs: number; shift: boolean }
   | { kind: "text"; text: string; perCharMs: number }
   | { kind: "move"; x: number; y: number; relative: boolean; durationMs: number }
   | {
@@ -593,7 +593,7 @@ export function blockChoices(): Promise<BlockChoices> {
  * Ask for a rectangle, drawn by dragging on the desktop.
  *
  * In a browser there is no second window to draw in, so the stand-in answers
- * with a rectangle near the middle of the window instead — enough to exercise
+ * with a rectangle near the middle of the window instead, enough to exercise
  * the flow while reviewing the UI.
  */
 export function pickRegion(request: PickRequest): Promise<void> {
@@ -616,6 +616,44 @@ export function savePicture(rect: Rect): Promise<Picture> {
 /** The picture itself, as a data URL, for its thumbnail. */
 export function picturePreview(id: string): Promise<string> {
   return call<string>("picture_preview", { id });
+}
+
+/**
+ * The pictures already saved, newest first.
+ *
+ * A macro that looks for the same thing in four blocks should not need the same
+ * rectangle dragged out four times, so the blocks offer what is already there.
+ */
+export function pictureHistory(): Promise<Picture[]> {
+  return call<Picture[]>("picture_history");
+}
+
+/**
+ * Take a picture off the saved shelf.
+ *
+ * Refused when a block still looks for it, the shelf shares pictures, so a
+ * shared one cannot be taken away from the blocks using it.
+ */
+export function forgetPicture(id: string): Promise<void> {
+  return call<void>("forget_picture", { id });
+}
+
+/**
+ * One macro that still looks for a picture, and the blocks in it that do.
+ *
+ * A block's `path` is its place in the tree, indices, with `steps` or
+ * `otherwise` where it sits inside a branch, which is what the builder needs to
+ * scroll to it.
+ */
+export type PictureUser = {
+  id: string;
+  macroName: string;
+  blocks: { label: string; path: string[] }[];
+};
+
+/** Where a picture is still used, asked when removing it is refused. */
+export function pictureUses(id: string): Promise<PictureUser[]> {
+  return call<PictureUser[]>("picture_uses", { id });
 }
 
 /** Forget a picture whose block has gone. */
@@ -646,7 +684,7 @@ export async function on<TPayload>(
 
 /** A fresh block of each kind, for the palette. */
 export const BLOCK_TEMPLATES: Record<Step["kind"], (partial?: object) => Step> = {
-  key: (partial) => ({ kind: "key", scan: 0x11, mode: "tap", holdMs: 80, uppercase: false, ...partial }),
+  key: (partial) => ({ kind: "key", scan: 0x11, mode: "tap", holdMs: 80, shift: false, ...partial }),
   text: (partial) => ({ kind: "text", text: "hello", perCharMs: 40, ...partial }),
   move: (partial) => ({ kind: "move", x: 0, y: 0, relative: false, durationMs: 150, ...partial }),
   click: (partial) => ({
@@ -810,7 +848,7 @@ export function stepSummary(step: Step, keys: KeyView[]): string {
       return `Click the picture with the ${step.button} button${wait}`;
     }
     case "key": {
-      const prefix = step.uppercase ? "Shift+" : "";
+      const prefix = step.shift ? "Shift+" : "";
       if (step.mode === "tap") return `Tap ${prefix}${label(step.scan)}`;
       if (step.mode === "hold") return `Hold ${prefix}${label(step.scan)} for ${step.holdMs} ms`;
       if (step.mode === "down") return `Press ${label(step.scan)} down`;
@@ -850,7 +888,7 @@ export function stepSummary(step: Step, keys: KeyView[]): string {
     case "log":
       return `Log “${step.text.slice(0, 40)}”`;
     case "randomDelay":
-      return `Wait ${step.minMs}–${step.maxMs} ms, picked at random`;
+      return `Wait ${step.minMs}, ${step.maxMs} ms, picked at random`;
     case "chord":
       return `${step.scans.map((scan) => label(scan)).join("+")} together, held ${step.holdMs} ms`;
     case "scrollAt":
@@ -1021,6 +1059,20 @@ const SCAN_BY_CODE: Record<string, number> = {
   // left one made the option unselectable in a `<select>`.
   ControlRight: 0x11d,
   AltRight: 0x138,
+  // Keys the table never named. A press of one of these found nothing and was
+  // dropped, which left the cap showing the key it already held, Left Ctrl on
+  // a fresh chord, as if the keyboard had not been heard at all.
+  PrintScreen: 0x137,
+  NumpadEnter: 0x11c,
+  NumpadDivide: 0x135,
+  MetaLeft: 0x15b,
+  MetaRight: 0x15c,
+  ContextMenu: 0x15d,
+  IntlBackslash: 0x56,
+  IntlRo: 0x73,
+  IntlYen: 0x7d,
+  NumpadComma: 0x7e,
+  NumpadEqual: 0x59,
 };
 
 export function scanFromCode(code: string): number | null {
@@ -1037,6 +1089,10 @@ const LABELS: Record<number, string> = {
   0x47: "Home", 0x48: "↑", 0x49: "Page up", 0x4b: "←", 0x4d: "→",
   0x4f: "End", 0x50: "↓", 0x51: "Page down", 0x52: "Insert", 0x53: "Delete",
   0x11d: "Right Ctrl", 0x138: "Right Alt",
+  0x137: "Print Screen", 0x11c: "Numpad Enter", 0x135: "Numpad /",
+  0x15b: "Left Windows", 0x15c: "Right Windows", 0x15d: "Menu",
+  0x56: "ISO \\", 0x73: "Intl Ro", 0x7d: "Intl Yen",
+  0x7e: "Numpad ,", 0x59: "Numpad =",
   // Mouse buttons, above the keyboard's scan codes so a key block can carry
   // either: the Rust side reads the same three numbers.
   0x201: "Left click", 0x202: "Right click", 0x203: "Middle click",
@@ -1578,6 +1634,18 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
       };
       break;
     }
+    case "reorder_macros": {
+      const ids = (args?.ids as string[]) ?? [];
+      const byId = new Map(mock.macros.map((entry) => [entry.id, entry]));
+      const ordered = ids
+        .map((id) => byId.get(id))
+        .filter((entry): entry is MacroView => Boolean(entry));
+      mock = {
+        ...mock,
+        macros: [...ordered, ...mock.macros.filter((entry) => !ids.includes(entry.id))],
+      };
+      break;
+    }
     case "delete_macro":
       mockUndo = structuredClone(mock);
       mock = { ...mock, macros: mock.macros.filter((entry) => entry.id !== args?.id) };
@@ -1744,8 +1812,14 @@ async function mockCall<T>(command: string, args?: Record<string, unknown>): Pro
     case "picture_preview":
       // A one-pixel PNG, so a block shows a thumbnail in the browser too.
       return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" as T;
+    case "picture_history":
+      return [] as T;
     case "delete_picture":
       break;
+    case "forget_picture":
+      break;
+    case "picture_uses":
+      return [] as T;
     case "pick_region": {
       const request = args?.request as PickRequest;
       const width =

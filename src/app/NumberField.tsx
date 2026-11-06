@@ -2,7 +2,7 @@
  * A number you type, with no stepper.
  *
  * A `number` input carries spin buttons that sit exactly where the cursor lands
- * when you aim at the field, and one click of them moves the value by one —
+ * when you aim at the field, and one click of them moves the value by one, 
  * useless for a duration set in hundreds of milliseconds, and easy to hit by
  * accident. This is a plain text box that keeps the digits and drops everything
  * else, so retyping over a value, or pasting `1 500 ms` into it, lands on 1500

@@ -1,10 +1,10 @@
 /**
  * UI-Colors, reimplemented.
  *
- * One hue (20–340°) and one chroma (0–0.2) derive fourteen named colours in
+ * One hue (20, 340°) and one chroma (0, 0.2) derive fourteen named colours in
  * OKLCH: three backgrounds, two ink steps, three edges, two actions and four
  * alerts. This is the arithmetic of
- * [whosajid/UI-Colors](https://github.com/whosajid/UI-Colors) — same lightness
+ * [whosajid/UI-Colors](https://github.com/whosajid/UI-Colors), same lightness
  * ladder per mode, same chroma floors so actions stay visible at zero
  * saturation, secondary action half a turn around the wheel.
  *
@@ -130,7 +130,7 @@ export function tokensOf(palette: Palette): Tokens {
 /**
  * The palette mapped onto Interior's material tokens.
  *
- * The three backgrounds keep their order — frame, recessed well, lifted panel —
+ * The three backgrounds keep their order, frame, recessed well, lifted panel, 
  * so the depth the components are built around survives the recolour. Shadows
  * are left alone: depth is what makes the materials read as materials.
  */
@@ -160,8 +160,8 @@ export function interiorVariables(tokens: Tokens): Record<string, string> {
  * The components express most of their surfaces and muted ink with `stone-*`
  * utilities, and Tailwind v4 resolves those through `--color-stone-*`. Overriding
  * the eleven steps at runtime therefore recolours ~640 utility usages at once,
- * while the lightness ladder — and so every contrast decision baked into the
- * components — stays where it was. Chroma is scaled well below the slider's
+ * while the lightness ladder, and so every contrast decision baked into the
+ * components, stays where it was. Chroma is scaled well below the slider's
  * value: these are greys that lean, not colours.
  */
 export function stoneRamp(palette: Palette): Record<string, string> {
