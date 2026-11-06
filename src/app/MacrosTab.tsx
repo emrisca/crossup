@@ -348,6 +348,13 @@ export function MacrosTab({
     if (!step) return;
     pickPath.current = path;
     setPicking(path);
+    // A picker that never opened would leave the block waiting for an answer
+    // that is not coming, so a failed open puts the button back as it was.
+    const giveUp = (reason: unknown) => {
+      pickPath.current = null;
+      setPicking(null);
+      onError(String(reason));
+    };
     if (
       step.kind === "waitImage" ||
       step.kind === "clickImage" ||
@@ -356,7 +363,9 @@ export function MacrosTab({
     ) {
       // A picture is dragged out of the screen the same way a zone is, and kept
       // on disk rather than in the settings file.
-      void pickRegion({ purpose: "macro-picture", index: 0, zones: [], points: [] });
+      void pickRegion({ purpose: "macro-picture", index: 0, zones: [], points: [] }).catch(
+        giveUp,
+      );
       return;
     }
     if (step.kind === "screenshot") {
@@ -367,7 +376,7 @@ export function MacrosTab({
         index: 0,
         zones: [{ x: step.x, y: step.y, width: step.width, height: step.height }],
         points: [],
-      });
+      }).catch(giveUp);
       return;
     }
     if (step.kind !== "move" && step.kind !== "click") {
@@ -382,8 +391,8 @@ export function MacrosTab({
       // A relative block's x and y are an offset, not a place: drawing them as a
       // marker on screen would point at the wrong spot entirely.
       points: step.relative ? [] : [{ x: step.x, y: step.y, width: 0, height: 0 }],
-    });
-  }, []);
+    }).catch(giveUp);
+  }, [onError]);
 
   useEffect(() => {
     let live = true;
@@ -424,7 +433,7 @@ export function MacrosTab({
               });
             }
           })
-          .catch(() => undefined);
+          .catch((reason) => onError(String(reason)));
         return;
       }
       if (result.purpose === "macro-shot") {
@@ -471,7 +480,7 @@ export function MacrosTab({
       live = false;
       for (const stop of stops) stop();
     };
-  }, [push]);
+  }, [push, onError]);
 
   const runningMacro = activity?.running && activity.running !== "clicker";
 

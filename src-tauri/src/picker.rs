@@ -27,6 +27,11 @@ pub const LABEL: &str = "picker";
 pub const MAIN: &str = "main";
 /// The event the main window listens for, with a [`PickResult`] payload.
 pub const PICKED: &str = "region-picked";
+/// The pick was given up: cancelled, Escaped, or the overlay went away.
+pub const CANCELLED: &str = "region-pick-cancelled";
+/// The one purpose whose rectangle is captured by the main window *after* the
+/// answer, and so the one that keeps the app hidden a moment longer.
+pub const PICTURE: &str = "macro-picture";
 
 /// A rectangle in some pixel space. Which one is stated where it is used.
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
@@ -85,6 +90,51 @@ fn pending() -> MutexGuard<'static, Option<PickRequest>> {
     // A panic in a pick would otherwise poison the lock and break every later
     // one, so the guard is taken back rather than unwrapped.
     PENDING.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// Whether the main window was showing when the picker covered it.
+///
+/// `None` means nothing is covered. It is remembered rather than assumed
+/// because a window the person had already hidden must not be brought back.
+static COVERED: Mutex<Option<bool>> = Mutex::new(None);
+
+fn covered() -> MutexGuard<'static, Option<bool>> {
+    COVERED.lock().unwrap_or_else(|error| error.into_inner())
+}
+
+/// Take the app off the screen while a rectangle is drawn.
+///
+/// The rectangle is a piece of the desktop, and the app is usually sitting on
+/// it. Hiding first keeps the Crossup window out of the zone and the click
+/// point, and — the reason this exists — out of the picture a macro will look
+/// for: a picture that contains the builder picking it matches the builder
+/// instead of the game.
+fn cover(app: &AppHandle) {
+    let mut covered = covered();
+    if covered.is_some() {
+        return;
+    }
+    let Some(window) = app.get_webview_window(MAIN) else {
+        return;
+    };
+    let showing = window.is_visible().unwrap_or(true);
+    let _ = window.hide();
+    *covered = Some(showing);
+}
+
+/// Bring the app back, if it was covered and was showing beforehand. Safe to
+/// call when nothing is covered, which is what makes it safe to call twice.
+pub fn restore(app: &AppHandle) {
+    let Some(showing) = covered().take() else {
+        return;
+    };
+    if !showing {
+        return;
+    }
+    if let Some(window) = app.get_webview_window(MAIN) {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
 }
 
 /// Where the picker window actually is, and how many screen pixels a CSS pixel
@@ -162,6 +212,10 @@ pub fn open(app: &AppHandle, request: PickRequest) -> Result<(), String> {
         width.max(1) as u32,
         height.max(1) as u32,
     ));
+    // The app goes away before the overlay appears, so it is not inside the
+    // rectangle being drawn — and, for a picture, not inside the shot taken
+    // from it a moment later.
+    cover(app);
     let _ = window.show();
     let _ = window.set_focus();
     // The window is reused, and its page is already loaded on every open after
@@ -193,10 +247,18 @@ pub fn context(app: &AppHandle) -> Option<PickContext> {
 pub fn finish(app: &AppHandle, drag: Rect) -> Result<(), String> {
     let Some(request) = pending().take() else {
         hide(app);
+        restore(app);
         return Err("nothing was being picked".to_string());
     };
-    let rect = to_screen(&drag, frame(app)?);
+    let placed = frame(app);
     hide(app);
+    let rect = match placed {
+        Ok(frame) => to_screen(&drag, frame),
+        Err(problem) => {
+            restore(app);
+            return Err(problem);
+        }
+    };
 
     let result = PickResult {
         purpose: request.purpose.clone(),
@@ -207,13 +269,35 @@ pub fn finish(app: &AppHandle, drag: Rect) -> Result<(), String> {
         height: rect.height,
     };
     let _ = app.emit_to(MAIN, PICKED, result);
+
+    if request.purpose == PICTURE {
+        // The picture is taken by the main window once this answer lands, so the
+        // app stays hidden until then: shown first, it would be captured into
+        // the very picture it is saving. `save_picture` brings it back, and the
+        // timer is the answer to a capture that never arrives — a rectangle the
+        // capture refuses must not leave a window nobody can see.
+        let handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            restore(&handle);
+        });
+    } else {
+        restore(app);
+    }
     Ok(())
 }
 
 /// Give up on the pick. Safe to call when nothing is being picked.
 pub fn cancel(app: &AppHandle) {
-    pending().take();
+    let was_picking = pending().take().is_some();
     hide(app);
+    restore(app);
+    // The window that asked is waiting on an event, not on this call, so giving
+    // up quietly left a block saying it was waiting for a spot long after the
+    // person had cancelled the pick.
+    if was_picking {
+        let _ = app.emit_to(MAIN, CANCELLED, ());
+    }
 }
 
 /// The picker window itself went away — a task switch with the window manager
@@ -221,8 +305,9 @@ pub fn cancel(app: &AppHandle) {
 /// part: a stale one would be answered against a window that no longer exists.
 pub fn closed(app: &AppHandle) {
     if pending().take().is_some() {
-        let _ = app.emit_to(MAIN, "region-pick-cancelled", ());
+        let _ = app.emit_to(MAIN, CANCELLED, ());
     }
+    restore(app);
 }
 
 #[cfg(test)]

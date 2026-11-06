@@ -720,7 +720,7 @@ fn save_picture(
     width: i32,
     height: i32,
 ) -> Result<pictures::Picture, String> {
-    pictures::capture(
+    let shot = pictures::capture(
         &app,
         picker::Rect {
             x,
@@ -728,7 +728,12 @@ fn save_picture(
             width,
             height,
         },
-    )
+    );
+    // The app was hidden for the pick and comes back whether or not the
+    // rectangle was a picture worth keeping: a size the capture turns down is
+    // something to say, not a reason for the window to stay away.
+    picker::restore(&app);
+    shot
 }
 
 /// The picture itself, as a data URL, for the thumbnail beside its block.
